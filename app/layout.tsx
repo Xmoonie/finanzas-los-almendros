@@ -10,7 +10,7 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'FinanzaPro - Gestion Financiera',
+  title: 'Inversiones Los Almendros - Gestion Financiera',
   description: 'Administra las finanzas de tu negocio: ingresos, gastos, presupuestos y reportes.',
   generator: 'v0.app',
   icons: {

@@ -86,7 +86,7 @@ export function AppSidebar() {
             <Wallet className="size-4" />
           </div>
           <div className="flex flex-col group-data-[collapsible=icon]:hidden">
-            <span className="text-sm font-bold tracking-tight">FinanzaPro</span>
+            <span className="text-sm font-bold tracking-tight">Inversiones Los Almendros</span>
             <span className="text-[10px] text-sidebar-foreground/60">Gestion Financiera</span>
           </div>
         </Link>
