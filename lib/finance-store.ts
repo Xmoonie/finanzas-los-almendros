@@ -1,11 +1,9 @@
+import { createClient } from "@/lib/supabase"
+import type { Transaction, Budget, Category, FinanceData, RecurringExpense, TransactionType } from "./types"
 
-import { format, subMonths, startOfMonth, endOfMonth, addDays, startOfWeek, endOfWeek, isWithinInterval, parseISO, differenceInDays } from "date-fns"
-import { es } from "date-fns/locale"
-import type { Transaction, Budget, Category, FinanceData, TransactionType, RecurringExpense } from "./types"
+const supabase = createClient()
 
-const STORAGE_KEY = "finanzas-data"
-
-const DEFAULT_CATEGORIES: Category[] = [
+export const DEFAULT_CATEGORIES: Category[] = [
   { id: "cat-1", name: "Ventas", type: "income", color: "#0d9488" },
   { id: "cat-2", name: "Servicios", type: "income", color: "#0ea5e9" },
   { id: "cat-3", name: "Consultorias", type: "income", color: "#8b5cf6" },
@@ -20,246 +18,179 @@ const DEFAULT_CATEGORIES: Category[] = [
   { id: "cat-12", name: "Otros Gastos", type: "expense", color: "#6b7280" },
 ]
 
-function generateSeedTransactions(): Transaction[] {
-  const now = new Date()
-  const transactions: Transaction[] = []
+export async function loadFinanceData(): Promise<FinanceData> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { transactions: [], budgets: [], categories: DEFAULT_CATEGORIES, recurringExpenses: [] }
 
-  const incomeEntries = [
-    { category: "Ventas", description: "Venta de productos", payee: "Cliente General" },
-    { category: "Servicios", description: "Servicio de consultoria", payee: "Empresa ABC" },
-    { category: "Ventas", description: "Venta al por mayor", payee: "Distribuidora XYZ" },
-    { category: "Consultorias", description: "Asesoria tecnica", payee: "Corporacion 123" },
-  ]
+  const [transactions, budgets, categories, recurringExpenses] = await Promise.all([
+    supabase.from("transactions").select("*").order("date", { ascending: false }),
+    supabase.from("budgets").select("*"),
+    supabase.from("categories").select("*"),
+    supabase.from("recurring_expenses").select("*"),
+  ])
 
-  const expenseEntries = [
-    { category: "Alquiler", description: "Alquiler del local", payee: "Inmobiliaria Central" },
-    { category: "Servicios Publicos", description: "Electricidad", payee: "ENEE" },
-    { category: "Planilla", description: "Salarios del mes", payee: "Empleados" },
-    { category: "Suministros", description: "Materiales de oficina", payee: "Office Depot" },
-    { category: "Marketing", description: "Publicidad en redes", payee: "Meta Ads" },
-    { category: "Transporte", description: "Combustible", payee: "Gasolinera Shell" },
-  ]
-
-  for (let monthOffset = 5; monthOffset >= 0; monthOffset--) {
-    const monthDate = subMonths(now, monthOffset)
-    const monthStart = startOfMonth(monthDate)
-    const monthEnd = endOfMonth(monthDate)
-    const daysInMonth = monthEnd.getDate()
-
-    // Generate 3-4 income entries per month
-    const incomeCount = 3 + Math.floor(Math.random() * 2)
-    for (let i = 0; i < incomeCount; i++) {
-      const entry = incomeEntries[i % incomeEntries.length]
-      const dayOffset = Math.floor(Math.random() * daysInMonth)
-      const date = addDays(monthStart, dayOffset)
-      transactions.push({
-        id: crypto.randomUUID(),
-        type: "income",
-        amount: Math.round((15000 + Math.random() * 85000) * 100) / 100,
-        category: entry.category,
-        description: entry.description,
-        date: format(date, "yyyy-MM-dd"),
-        payee: entry.payee,
-      })
-    }
-
-    // Generate 4-6 expense entries per month
-    const expenseCount = 4 + Math.floor(Math.random() * 3)
-    for (let i = 0; i < expenseCount; i++) {
-      const entry = expenseEntries[i % expenseEntries.length]
-      const dayOffset = Math.floor(Math.random() * daysInMonth)
-      const date = addDays(monthStart, dayOffset)
-      transactions.push({
-        id: crypto.randomUUID(),
-        type: "expense",
-        amount: Math.round((2000 + Math.random() * 30000) * 100) / 100,
-        category: entry.category,
-        description: entry.description,
-        date: format(date, "yyyy-MM-dd"),
-        payee: entry.payee,
-      })
-    }
+  return {
+    transactions: (transactions.data || []).map(t => ({
+      id: t.id,
+      type: t.type,
+      amount: t.amount,
+      category: t.category,
+      description: t.description,
+      date: t.date,
+      payee: t.payee,
+    })),
+    budgets: (budgets.data || []).map(b => ({
+      id: b.id,
+      category: b.category,
+      monthlyLimit: b.monthly_limit,
+      month: b.month,
+    })),
+    categories: categories.data?.length ? categories.data : DEFAULT_CATEGORIES,
+    recurringExpenses: (recurringExpenses.data || []).map(r => ({
+      id: r.id,
+      category: r.category,
+      description: r.description,
+      payee: r.payee,
+      amount: r.amount,
+      frequency: r.frequency,
+      startDate: r.start_date,
+      active: r.active,
+    })),
   }
-
-  return transactions.sort((a, b) => b.date.localeCompare(a.date))
 }
 
-function generateSeedBudgets(): Budget[] {
-  const now = new Date()
-  const currentMonth = format(now, "yyyy-MM")
-  const expenseCategories = DEFAULT_CATEGORIES.filter(c => c.type === "expense")
+export async function addTransaction(data: FinanceData, transaction: Omit<Transaction, "id">): Promise<FinanceData> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return data
 
-  const budgetLimits: Record<string, number> = {
-    "Alquiler": 25000,
-    "Servicios Publicos": 8000,
-    "Planilla": 50000,
-    "Suministros": 10000,
-    "Marketing": 15000,
-    "Transporte": 7000,
-    "Mantenimiento": 5000,
-    "Otros Gastos": 10000,
-  }
+  const { data: inserted } = await supabase.from("transactions").insert({
+    user_id: user.id,
+    type: transaction.type,
+    amount: transaction.amount,
+    category: transaction.category,
+    description: transaction.description,
+    date: transaction.date,
+    payee: transaction.payee,
+  }).select().single()
 
-  return expenseCategories.map(cat => ({
-    id: crypto.randomUUID(),
-    category: cat.name,
-    monthlyLimit: budgetLimits[cat.name] || 10000,
-    month: currentMonth,
-  }))
+  if (!inserted) return data
+  return { ...data, transactions: [{ ...transaction, id: inserted.id }, ...data.transactions] }
 }
 
-function generateSeedRecurringExpenses(): RecurringExpense[] {
-  const sixMonthsAgo = format(subMonths(new Date(), 6), "yyyy-MM-dd")
-  return [
-    {
-      id: crypto.randomUUID(),
-      category: "Alquiler",
-      description: "Alquiler del local comercial",
-      payee: "Inmobiliaria Central",
-      amount: 22000,
-      frequency: "monthly",
-      startDate: sixMonthsAgo,
-      active: true,
-    },
-    {
-      id: crypto.randomUUID(),
-      category: "Servicios Publicos",
-      description: "Servicio de internet",
-      payee: "Tigo Honduras",
-      amount: 1800,
-      frequency: "monthly",
-      startDate: sixMonthsAgo,
-      active: true,
-    },
-    {
-      id: crypto.randomUUID(),
-      category: "Planilla",
-      description: "Salarios mensuales",
-      payee: "Empleados",
-      amount: 45000,
-      frequency: "monthly",
-      startDate: sixMonthsAgo,
-      active: true,
-    },
-    {
-      id: crypto.randomUUID(),
-      category: "Marketing",
-      description: "Suscripcion publicidad digital",
-      payee: "Meta Ads",
-      amount: 3500,
-      frequency: "monthly",
-      startDate: sixMonthsAgo,
-      active: true,
-    },
-    {
-      id: crypto.randomUUID(),
-      category: "Mantenimiento",
-      description: "Servicio de limpieza",
-      payee: "Limpieza Express",
-      amount: 2500,
-      frequency: "biweekly",
-      startDate: sixMonthsAgo,
-      active: true,
-    },
-  ]
+export async function updateTransaction(data: FinanceData, transaction: Transaction): Promise<FinanceData> {
+  await supabase.from("transactions").update({
+    type: transaction.type,
+    amount: transaction.amount,
+    category: transaction.category,
+    description: transaction.description,
+    date: transaction.date,
+    payee: transaction.payee,
+  }).eq("id", transaction.id)
+
+  return { ...data, transactions: data.transactions.map(t => t.id === transaction.id ? transaction : t) }
 }
 
-export function loadFinanceData(): FinanceData {
-  if (typeof window === "undefined") {
-    return { transactions: [], budgets: [], categories: DEFAULT_CATEGORIES, recurringExpenses: [] }
-  }
-
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) {
-      const data = JSON.parse(stored) as FinanceData
-      return data
-    }
-  } catch {
-    // If parsing fails, seed with defaults
-  }
-
-  const seedData: FinanceData = {
-    transactions: generateSeedTransactions(),
-    budgets: generateSeedBudgets(),
-    categories: DEFAULT_CATEGORIES,
-    recurringExpenses: generateSeedRecurringExpenses(),
-  }
-
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(seedData))
-  return seedData
+export async function deleteTransaction(data: FinanceData, id: string): Promise<FinanceData> {
+  await supabase.from("transactions").delete().eq("id", id)
+  return { ...data, transactions: data.transactions.filter(t => t.id !== id) }
 }
 
-export function saveFinanceData(data: FinanceData): void {
-  if (typeof window === "undefined") return
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+export async function addBudget(data: FinanceData, budget: Omit<Budget, "id">): Promise<FinanceData> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return data
+
+  const { data: inserted } = await supabase.from("budgets").insert({
+    user_id: user.id,
+    category: budget.category,
+    monthly_limit: budget.monthlyLimit,
+    month: budget.month,
+  }).select().single()
+
+  if (!inserted) return data
+  return { ...data, budgets: [...data.budgets, { ...budget, id: inserted.id }] }
 }
 
-// Transaction CRUD
-export function addTransaction(data: FinanceData, transaction: Omit<Transaction, "id">): FinanceData {
-  const newTransaction: Transaction = {
-    ...transaction,
-    id: crypto.randomUUID(),
-  }
-  const updated = {
-    ...data,
-    transactions: [newTransaction, ...data.transactions].sort((a, b) => b.date.localeCompare(a.date)),
-  }
-  saveFinanceData(updated)
-  return updated
+export async function updateBudget(data: FinanceData, budget: Budget): Promise<FinanceData> {
+  await supabase.from("budgets").update({
+    category: budget.category,
+    monthly_limit: budget.monthlyLimit,
+    month: budget.month,
+  }).eq("id", budget.id)
+
+  return { ...data, budgets: data.budgets.map(b => b.id === budget.id ? budget : b) }
 }
 
-export function updateTransaction(data: FinanceData, transaction: Transaction): FinanceData {
-  const updated = {
-    ...data,
-    transactions: data.transactions.map(t => t.id === transaction.id ? transaction : t),
-  }
-  saveFinanceData(updated)
-  return updated
+export async function deleteBudget(data: FinanceData, id: string): Promise<FinanceData> {
+  await supabase.from("budgets").delete().eq("id", id)
+  return { ...data, budgets: data.budgets.filter(b => b.id !== id) }
 }
 
-export function deleteTransaction(data: FinanceData, id: string): FinanceData {
-  const updated = {
-    ...data,
-    transactions: data.transactions.filter(t => t.id !== id),
-  }
-  saveFinanceData(updated)
-  return updated
+export async function addRecurringExpense(data: FinanceData, expense: Omit<RecurringExpense, "id">): Promise<FinanceData> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return data
+
+  const { data: inserted } = await supabase.from("recurring_expenses").insert({
+    user_id: user.id,
+    category: expense.category,
+    description: expense.description,
+    payee: expense.payee,
+    amount: expense.amount,
+    frequency: expense.frequency,
+    start_date: expense.startDate,
+    active: expense.active,
+  }).select().single()
+
+  if (!inserted) return data
+  return { ...data, recurringExpenses: [...data.recurringExpenses, { ...expense, id: inserted.id }] }
 }
 
-// Budget CRUD
-export function addBudget(data: FinanceData, budget: Omit<Budget, "id">): FinanceData {
-  const newBudget: Budget = {
-    ...budget,
-    id: crypto.randomUUID(),
-  }
-  const updated = {
-    ...data,
-    budgets: [...data.budgets, newBudget],
-  }
-  saveFinanceData(updated)
-  return updated
+export async function updateRecurringExpense(data: FinanceData, expense: RecurringExpense): Promise<FinanceData> {
+  await supabase.from("recurring_expenses").update({
+    category: expense.category,
+    description: expense.description,
+    payee: expense.payee,
+    amount: expense.amount,
+    frequency: expense.frequency,
+    start_date: expense.startDate,
+    active: expense.active,
+  }).eq("id", expense.id)
+
+  return { ...data, recurringExpenses: data.recurringExpenses.map(r => r.id === expense.id ? expense : r) }
 }
 
-export function updateBudget(data: FinanceData, budget: Budget): FinanceData {
-  const updated = {
-    ...data,
-    budgets: data.budgets.map(b => b.id === budget.id ? budget : b),
-  }
-  saveFinanceData(updated)
-  return updated
+export async function deleteRecurringExpense(data: FinanceData, id: string): Promise<FinanceData> {
+  await supabase.from("recurring_expenses").delete().eq("id", id)
+  return { ...data, recurringExpenses: data.recurringExpenses.filter(r => r.id !== id) }
 }
 
-export function deleteBudget(data: FinanceData, id: string): FinanceData {
-  const updated = {
-    ...data,
-    budgets: data.budgets.filter(b => b.id !== id),
-  }
-  saveFinanceData(updated)
-  return updated
+export async function toggleRecurringExpense(data: FinanceData, id: string): Promise<FinanceData> {
+  const expense = data.recurringExpenses.find(r => r.id === id)
+  if (!expense) return data
+
+  await supabase.from("recurring_expenses").update({ active: !expense.active }).eq("id", id)
+  return { ...data, recurringExpenses: data.recurringExpenses.map(r => r.id === id ? { ...r, active: !r.active } : r) }
 }
 
-// Formatting helpers
+export async function addCategory(data: FinanceData, category: Omit<Category, "id">): Promise<FinanceData> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return data
+
+  const { data: inserted } = await supabase.from("categories").insert({
+    user_id: user.id,
+    name: category.name,
+    type: category.type,
+    color: category.color,
+  }).select().single()
+
+  if (!inserted) return data
+  return { ...data, categories: [...data.categories, { ...category, id: inserted.id }] }
+}
+
+export async function deleteCategory(data: FinanceData, id: string): Promise<FinanceData> {
+  await supabase.from("categories").delete().eq("id", id)
+  return { ...data, categories: data.categories.filter(c => c.id !== id) }
+}
+
 export function formatCurrency(amount: number): string {
   return `L ${amount.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
@@ -268,73 +199,6 @@ export function getCategoryColor(categories: Category[], categoryName: string): 
   return categories.find(c => c.name === categoryName)?.color || "#6b7280"
 }
 
-// Recurring Expense CRUD
-export function addRecurringExpense(data: FinanceData, expense: Omit<RecurringExpense, "id">): FinanceData {
-  const newExpense: RecurringExpense = {
-    ...expense,
-    id: crypto.randomUUID(),
-  }
-  const updated = {
-    ...data,
-    recurringExpenses: [...data.recurringExpenses, newExpense],
-  }
-  saveFinanceData(updated)
-  return updated
-}
-
-export function updateRecurringExpense(data: FinanceData, expense: RecurringExpense): FinanceData {
-  const updated = {
-    ...data,
-    recurringExpenses: data.recurringExpenses.map(r => r.id === expense.id ? expense : r),
-  }
-  saveFinanceData(updated)
-  return updated
-}
-
-export function deleteRecurringExpense(data: FinanceData, id: string): FinanceData {
-  const updated = {
-    ...data,
-    recurringExpenses: data.recurringExpenses.filter(r => r.id !== id),
-  }
-  saveFinanceData(updated)
-  return updated
-}
-
-export function toggleRecurringExpense(data: FinanceData, id: string): FinanceData {
-  const updated = {
-    ...data,
-    recurringExpenses: data.recurringExpenses.map(r =>
-      r.id === id ? { ...r, active: !r.active } : r
-    ),
-  }
-  saveFinanceData(updated)
-  return updated
-}
-
-// Category CRUD
-export function addCategory(data: FinanceData, category: Omit<Category, "id">): FinanceData {
-  const newCategory: Category = {
-    ...category,
-    id: crypto.randomUUID(),
-  }
-  const updated = {
-    ...data,
-    categories: [...data.categories, newCategory],
-  }
-  saveFinanceData(updated)
-  return updated
-}
-
-export function deleteCategory(data: FinanceData, id: string): FinanceData {
-  const updated = {
-    ...data,
-    categories: data.categories.filter(c => c.id !== id),
-  }
-  saveFinanceData(updated)
-  return updated
-}
-
-// Recurring expense monthly total
 export function getMonthlyRecurringTotal(recurringExpenses: RecurringExpense[]): number {
   return recurringExpenses
     .filter(r => r.active)
@@ -347,158 +211,4 @@ export function getMonthlyRecurringTotal(recurringExpenses: RecurringExpense[]):
         default: return total + r.amount
       }
     }, 0)
-}
-
-// Balance Sheet utilities
-export type BalancePeriod = "day" | "week" | "month" | "all"
-
-export interface BalanceData {
-  totalIncome: number
-  totalExpenses: number
-  netBalance: number
-  transactionCount: number
-  dailyAverage: {
-    income: number
-    expenses: number
-    net: number
-  }
-  periodLabel: string
-}
-
-export function getBalanceForPeriod(
-  transactions: Transaction[],
-  period: BalancePeriod,
-  customDate?: Date
-): BalanceData {
-  const now = customDate || new Date()
-  let filtered: Transaction[]
-  let periodLabel: string
-  let daysInPeriod: number
-
-  switch (period) {
-    case "day": {
-      const dayStr = format(now, "yyyy-MM-dd")
-      filtered = transactions.filter(t => t.date === dayStr)
-      periodLabel = format(now, "dd 'de' MMMM, yyyy", { locale: es })
-      daysInPeriod = 1
-      break
-    }
-    case "week": {
-      const weekStart = startOfWeek(now, { weekStartsOn: 1 })
-      const weekEnd = endOfWeek(now, { weekStartsOn: 1 })
-      filtered = transactions.filter(t => {
-        const d = parseISO(t.date)
-        return isWithinInterval(d, { start: weekStart, end: weekEnd })
-      })
-      periodLabel = `${format(weekStart, "dd MMM", { locale: es })} - ${format(weekEnd, "dd MMM, yyyy", { locale: es })}`
-      daysInPeriod = differenceInDays(now, weekStart) + 1
-      break
-    }
-    case "month": {
-      const monthStart = startOfMonth(now)
-      const monthEnd = endOfMonth(now)
-      const monthStartStr = format(monthStart, "yyyy-MM-dd")
-      const monthEndStr = format(monthEnd, "yyyy-MM-dd")
-      filtered = transactions.filter(t => t.date >= monthStartStr && t.date <= monthEndStr)
-      periodLabel = format(now, "MMMM yyyy", { locale: es })
-      daysInPeriod = differenceInDays(now, monthStart) + 1
-      break
-    }
-    default: {
-      filtered = transactions
-      if (transactions.length > 0) {
-        const dates = transactions.map(t => t.date).sort()
-        const oldest = parseISO(dates[0])
-        periodLabel = `Desde ${format(oldest, "dd MMM yyyy", { locale: es })}`
-        daysInPeriod = Math.max(1, differenceInDays(now, oldest) + 1)
-      } else {
-        periodLabel = "Sin transacciones"
-        daysInPeriod = 1
-      }
-      break
-    }
-  }
-
-  const totalIncome = filtered.filter(t => t.type === "income").reduce((s, t) => s + t.amount, 0)
-  const totalExpenses = filtered.filter(t => t.type === "expense").reduce((s, t) => s + t.amount, 0)
-
-  return {
-    totalIncome,
-    totalExpenses,
-    netBalance: totalIncome - totalExpenses,
-    transactionCount: filtered.length,
-    dailyAverage: {
-      income: totalIncome / daysInPeriod,
-      expenses: totalExpenses / daysInPeriod,
-      net: (totalIncome - totalExpenses) / daysInPeriod,
-    },
-    periodLabel,
-  }
-}
-
-// Anomaly detection - identifies significant changes (>30% deviation from average)
-export interface Anomaly {
-  type: "spike" | "drop"
-  category: string
-  transactionType: TransactionType
-  currentAmount: number
-  averageAmount: number
-  percentChange: number
-  period: string
-}
-
-export function detectAnomalies(transactions: Transaction[]): Anomaly[] {
-  const now = new Date()
-  const currentMonthStart = format(startOfMonth(now), "yyyy-MM-dd")
-  const currentMonthEnd = format(endOfMonth(now), "yyyy-MM-dd")
-  const anomalies: Anomaly[] = []
-
-  // Group by type and category
-  const types: Array<"income" | "expense"> = ["income", "expense"]
-
-  for (const txType of types) {
-    const typeTxs = transactions.filter(t => t.type === txType)
-    const categories = [...new Set(typeTxs.map(t => t.category))]
-
-    for (const cat of categories) {
-      const catTxs = typeTxs.filter(t => t.category === cat)
-
-      // Group by month
-      const monthlyTotals: Record<string, number> = {}
-      for (const tx of catTxs) {
-        const month = tx.date.substring(0, 7)
-        monthlyTotals[month] = (monthlyTotals[month] || 0) + tx.amount
-      }
-
-      const months = Object.keys(monthlyTotals).sort()
-      if (months.length < 2) continue
-
-      const currentMonth = format(now, "yyyy-MM")
-      const previousMonths = months.filter(m => m !== currentMonth)
-      if (previousMonths.length === 0) continue
-
-      const avgPrevious = previousMonths.reduce((s, m) => s + monthlyTotals[m], 0) / previousMonths.length
-      const currentAmount = monthlyTotals[currentMonth] || 0
-
-      if (avgPrevious === 0) continue
-
-      const percentChange = ((currentAmount - avgPrevious) / avgPrevious) * 100
-
-      // Only flag changes >30%
-      if (Math.abs(percentChange) > 30) {
-        anomalies.push({
-          type: percentChange > 0 ? "spike" : "drop",
-          category: cat,
-          transactionType: txType,
-          currentAmount,
-          averageAmount: avgPrevious,
-          percentChange,
-          period: format(now, "MMMM yyyy", { locale: es }),
-        })
-      }
-    }
-  }
-
-  // Sort by absolute percent change descending
-  return anomalies.sort((a, b) => Math.abs(b.percentChange) - Math.abs(a.percentChange))
 }
