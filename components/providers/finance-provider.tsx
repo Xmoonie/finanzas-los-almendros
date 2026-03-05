@@ -1,7 +1,7 @@
 "use client"
 
 import React, { createContext, useContext, useState, useEffect } from "react"
-import type { FinanceData, Transaction, Budget, RecurringExpense } from "@/lib/types"
+import type { FinanceData, Transaction, Budget, RecurringExpense, Category } from "@/lib/types"
 import {
   loadFinanceData,
   addTransaction as addTx,
@@ -21,18 +21,18 @@ import {
 interface FinanceContextValue {
   data: FinanceData
   isLoaded: boolean
-  addTransaction: (transaction: Omit<Transaction, "id">) => void
-  updateTransaction: (transaction: Transaction) => void
-  deleteTransaction: (id: string) => void
-  addBudget: (budget: Omit<Budget, "id">) => void
-  updateBudget: (budget: Budget) => void
-  deleteBudget: (id: string) => void
-  addRecurringExpense: (expense: Omit<RecurringExpense, "id">) => void
-  updateRecurringExpense: (expense: RecurringExpense) => void
-  deleteRecurringExpense: (id: string) => void
-  toggleRecurringExpense: (id: string) => void
-  addCategory: (category: Omit<import("@/lib/types").Category, "id">) => void
-  deleteCategory: (id: string) => void
+  addTransaction: (transaction: Omit<Transaction, "id">) => Promise<void>
+  updateTransaction: (transaction: Transaction) => Promise<void>
+  deleteTransaction: (id: string) => Promise<void>
+  addBudget: (budget: Omit<Budget, "id">) => Promise<void>
+  updateBudget: (budget: Budget) => Promise<void>
+  deleteBudget: (id: string) => Promise<void>
+  addRecurringExpense: (expense: Omit<RecurringExpense, "id">) => Promise<void>
+  updateRecurringExpense: (expense: RecurringExpense) => Promise<void>
+  deleteRecurringExpense: (id: string) => Promise<void>
+  toggleRecurringExpense: (id: string) => Promise<void>
+  addCategory: (category: Omit<Category, "id">) => Promise<void>
+  deleteCategory: (id: string) => Promise<void>
 }
 
 const FinanceContext = createContext<FinanceContextValue | null>(null)
@@ -43,67 +43,85 @@ export function useFinance() {
   return ctx
 }
 
+const EMPTY: FinanceData = {
+  transactions: [],
+  budgets: [],
+  categories: [],
+  recurringExpenses: [],
+}
+
 export function FinanceProvider({ children }: { children: React.ReactNode }) {
-  const [data, setData] = useState<FinanceData>({
-    transactions: [],
-    budgets: [],
-    categories: [],
-    recurringExpenses: [],
-  })
+  const [data, setData] = useState<FinanceData>(EMPTY)
   const [isLoaded, setIsLoaded] = useState(false)
 
   useEffect(() => {
-    const loaded = loadFinanceData()
-    setData(loaded)
-    setIsLoaded(true)
+    loadFinanceData().then(loaded => {
+      setData(loaded)
+      setIsLoaded(true)
+    }).catch(() => {
+      setData(EMPTY)
+      setIsLoaded(true)
+    })
   }, [])
 
-  const handleAddTransaction = (transaction: Omit<Transaction, "id">) => {
-    setData(prev => addTx(prev, transaction))
+  const handleAddTransaction = async (transaction: Omit<Transaction, "id">) => {
+    const updated = await addTx(data, transaction)
+    setData(updated)
   }
 
-  const handleUpdateTransaction = (transaction: Transaction) => {
-    setData(prev => updateTx(prev, transaction))
+  const handleUpdateTransaction = async (transaction: Transaction) => {
+    const updated = await updateTx(data, transaction)
+    setData(updated)
   }
 
-  const handleDeleteTransaction = (id: string) => {
-    setData(prev => deleteTx(prev, id))
+  const handleDeleteTransaction = async (id: string) => {
+    const updated = await deleteTx(data, id)
+    setData(updated)
   }
 
-  const handleAddBudget = (budget: Omit<Budget, "id">) => {
-    setData(prev => addBdg(prev, budget))
+  const handleAddBudget = async (budget: Omit<Budget, "id">) => {
+    const updated = await addBdg(data, budget)
+    setData(updated)
   }
 
-  const handleUpdateBudget = (budget: Budget) => {
-    setData(prev => updateBdg(prev, budget))
+  const handleUpdateBudget = async (budget: Budget) => {
+    const updated = await updateBdg(data, budget)
+    setData(updated)
   }
 
-  const handleDeleteBudget = (id: string) => {
-    setData(prev => deleteBdg(prev, id))
+  const handleDeleteBudget = async (id: string) => {
+    const updated = await deleteBdg(data, id)
+    setData(updated)
   }
 
-  const handleAddRecurringExpense = (expense: Omit<RecurringExpense, "id">) => {
-    setData(prev => addRec(prev, expense))
+  const handleAddRecurringExpense = async (expense: Omit<RecurringExpense, "id">) => {
+    const updated = await addRec(data, expense)
+    setData(updated)
   }
 
-  const handleUpdateRecurringExpense = (expense: RecurringExpense) => {
-    setData(prev => updateRec(prev, expense))
+  const handleUpdateRecurringExpense = async (expense: RecurringExpense) => {
+    const updated = await updateRec(data, expense)
+    setData(updated)
   }
 
-  const handleDeleteRecurringExpense = (id: string) => {
-    setData(prev => deleteRec(prev, id))
+  const handleDeleteRecurringExpense = async (id: string) => {
+    const updated = await deleteRec(data, id)
+    setData(updated)
   }
 
-  const handleToggleRecurringExpense = (id: string) => {
-    setData(prev => toggleRec(prev, id))
+  const handleToggleRecurringExpense = async (id: string) => {
+    const updated = await toggleRec(data, id)
+    setData(updated)
   }
 
-  const handleAddCategory = (category: Omit<import("@/lib/types").Category, "id">) => {
-    setData(prev => addCat(prev, category))
+  const handleAddCategory = async (category: Omit<Category, "id">) => {
+    const updated = await addCat(data, category)
+    setData(updated)
   }
 
-  const handleDeleteCategory = (id: string) => {
-    setData(prev => deleteCat(prev, id))
+  const handleDeleteCategory = async (id: string) => {
+    const updated = await deleteCat(data, id)
+    setData(updated)
   }
 
   return (
