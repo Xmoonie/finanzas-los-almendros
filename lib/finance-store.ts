@@ -212,3 +212,150 @@ export function getMonthlyRecurringTotal(recurringExpenses: RecurringExpense[]):
       }
     }, 0)
 }
+// Balance utilities
+export type BalancePeriod = "day" | "week" | "month" | "all"
+
+export interface BalanceData {
+  totalIncome: number
+  totalExpenses: number
+  netBalance: number
+  transactionCount: number
+  dailyAverage: {
+    income: number
+    expenses: number
+    net: number
+  }
+  periodLabel: string
+}
+
+export function getBalanceForPeriod(
+  transactions: Transaction[],
+  period: BalancePeriod,
+  customDate?: Date
+): BalanceData {
+  const { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isWithinInterval, parseISO, differenceInDays } = require("date-fns")
+  const { es } = require("date-fns/locale")
+  const now = customDate || new Date()
+  let filtered: Transaction[]
+  let periodLabel: string
+  let daysInPeriod: number
+
+  switch (period) {
+    case "day": {
+      const dayStr = format(now, "yyyy-MM-dd")
+      filtered = transactions.filter(t => t.date === dayStr)
+      periodLabel = format(now, "dd 'de' MMMM, yyyy", { locale: es })
+      daysInPeriod = 1
+      break
+    }
+    case "week": {
+      const weekStart = startOfWeek(now, { weekStartsOn: 1 })
+      const weekEnd = endOfWeek(now, { weekStartsOn: 1 })
+      filtered = transactions.filter(t => {
+        const d = parseISO(t.date)
+        return isWithinInterval(d, { start: weekStart, end: weekEnd })
+      })
+      periodLabel = `${format(weekStart, "dd MMM", { locale: es })} - ${format(weekEnd, "dd MMM, yyyy", { locale: es })}`
+      daysInPeriod = differenceInDays(now, weekStart) + 1
+      break
+    }
+    case "month": {
+      const monthStart = startOfMonth(now)
+      const monthEnd = endOfMonth(now)
+      const monthStartStr = format(monthStart, "yyyy-MM-dd")
+      const monthEndStr = format(monthEnd, "yyyy-MM-dd")
+      filtered = transactions.filter(t => t.date >= monthStartStr && t.date <= monthEndStr)
+      periodLabel = format(now, "MMMM yyyy", { locale: es })
+      daysInPeriod = differenceInDays(now, monthStart) + 1
+      break
+    }
+    default: {
+      filtered = transactions
+      if (transactions.length > 0) {
+        const dates = transactions.map(t => t.date).sort()
+        const oldest = parseISO(dates[0])
+        periodLabel = `Desde ${format(oldest, "dd MMM yyyy", { locale: es })}`
+        daysInPeriod = Math.max(1, differenceInDays(now, oldest) + 1)
+      } else {
+        periodLabel = "Sin transacciones"
+        daysInPeriod = 1
+      }
+      break
+    }
+  }
+
+  const totalIncome = filtered.filter(t => t.type === "income").reduce((s, t) => s + t.amount, 0)
+  const totalExpenses = filtered.filter(t => t.type === "expense").reduce((s, t) => s + t.amount, 0)
+
+  return {
+    totalIncome,
+    totalExpenses,
+    netBalance: totalIncome - totalExpenses,
+    transactionCount: filtered.length,
+    dailyAverage: {
+      income: totalIncome / daysInPeriod,
+      expenses: totalExpenses / daysInPeriod,
+      net: (totalIncome - totalExpenses) / daysInPeriod,
+    },
+    periodLabel,
+  }
+}
+
+// Anomaly detection
+export interface Anomaly {
+  type: "spike" | "drop"
+  category: string
+  transactionType: TransactionType
+  currentAmount: number
+  averageAmount: number
+  percentChange: number
+  period: string
+}
+
+export function detectAnomalies(transactions: Transaction[]): Anomaly[] {
+  const { format, startOfMonth, endOfMonth, parseISO } = require("date-fns")
+  const { es } = require("date-fns/locale")
+  const now = new Date()
+  const anomalies: Anomaly[] = []
+  const types: Array<"income" | "expense"> = ["income", "expense"]
+
+  for (const txType of types) {
+    const typeTxs = transactions.filter(t => t.type === txType)
+    const categories = [...new Set(typeTxs.map(t => t.category))]
+
+    for (const cat of categories) {
+      const catTxs = typeTxs.filter(t => t.category === cat)
+      const monthlyTotals: Record<string, number> = {}
+      for (const tx of catTxs) {
+        const month = tx.date.substring(0, 7)
+        monthlyTotals[month] = (monthlyTotals[month] || 0) + tx.amount
+      }
+
+      const months = Object.keys(monthlyTotals).sort()
+      if (months.length < 2) continue
+
+      const currentMonth = format(now, "yyyy-MM")
+      const previousMonths = months.filter(m => m !== currentMonth)
+      if (previousMonths.length === 0) continue
+
+      const avgPrevious = previousMonths.reduce((s, m) => s + monthlyTotals[m], 0) / previousMonths.length
+      const currentAmount = monthlyTotals[currentMonth] || 0
+      if (avgPrevious === 0) continue
+
+      const percentChange = ((currentAmount - avgPrevious) / avgPrevious) * 100
+      if (Math.abs(percentChange) > 30) {
+        anomalies.push({
+          type: percentChange > 0 ? "spike" : "drop",
+          category: cat,
+          transactionType: txType,
+          currentAmount,
+          averageAmount: avgPrevious,
+          percentChange,
+          period: format(now, "MMMM yyyy", { locale: es }),
+        })
+      }
+    }
+  }
+
+  return anomalies.sort((a, b) => Math.abs(b.percentChange) - Math.abs(a.percentChange))
+}
