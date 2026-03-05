@@ -1,6 +1,7 @@
+
 import { format, subMonths, startOfMonth, endOfMonth, addDays, startOfWeek, endOfWeek, isWithinInterval, parseISO, differenceInDays } from "date-fns"
 import { es } from "date-fns/locale"
-import type { Transaction, Budget, Category, FinanceData, RecurringExpense } from "./types"
+import type { Transaction, Budget, Category, FinanceData, TransactionType, RecurringExpense } from "./types"
 
 const STORAGE_KEY = "finanzas-data"
 
