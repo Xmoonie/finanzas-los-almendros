@@ -1,5 +1,5 @@
 "use client"
-
+import { exportCostLogToExcel } from "@/lib/export-costs"
 import { useState } from "react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
@@ -33,7 +33,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Trash2, PlusCircle } from "lucide-react"
+import { Trash2, PlusCircle, Download } from "lucide-react"
 import type { IngredientCategory, MeatType, Unit } from "@/lib/cost-types"
 
 const CATEGORY_LABELS: Record<IngredientCategory, string> = {
@@ -322,7 +322,7 @@ function CostLogTable({ selectedDate }: { selectedDate: string }) {
 }
 
 function CostosContent() {
-  const { isLoaded } = useCost()
+  const { isLoaded, data } = useCost()
   const [selectedDate, setSelectedDate] = useState(() => format(new Date(), "yyyy-MM-dd"))
 
   if (!isLoaded) {
@@ -344,15 +344,24 @@ function CostosContent() {
           <h2 className="text-sm font-semibold text-foreground">Control de Costos Diario</h2>
           <p className="text-xs text-muted-foreground">Carnes, vegetales y arroz/granos</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Label className="text-xs text-muted-foreground">Fecha</Label>
-          <Input
-            type="date"
-            className="w-auto text-sm"
-            value={selectedDate}
-            onChange={e => setSelectedDate(e.target.value)}
-          />
-        </div>
+    <div className="flex items-center gap-2">
+  <Button
+    variant="outline"
+    size="sm"
+    className="gap-2"
+    onClick={() => exportCostLogToExcel(data.entries)}
+  >
+    <Download className="h-4 w-4" />
+    Exportar Excel
+  </Button>
+  <Label className="text-xs text-muted-foreground">Fecha</Label>
+  <Input
+    type="date"
+    className="w-auto text-sm"
+    value={selectedDate}
+    onChange={e => setSelectedDate(e.target.value)}
+  />
+</div>
       </div>
       <CostSummaryCards selectedDate={selectedDate} />
       <CostLogForm />
