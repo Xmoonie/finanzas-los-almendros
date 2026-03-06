@@ -13,6 +13,7 @@ import {
   Scale,
   Repeat,
   Settings,
+  ChefHat,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 
@@ -67,6 +68,11 @@ const navItems = [
     href: "/reports",
     icon: BarChart3,
   },
+  {
+  label: "Control de Costos",
+  href: "/costos",
+  icon: ChefHat,
+},
   {
     label: "Configuración",
     href: "/settings",
