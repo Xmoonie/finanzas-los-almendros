@@ -40,6 +40,7 @@ export default function LoginPage() {
           placeholder="Contraseña"
           value={password}
           onChange={e => setPassword(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && handleSubmit()}
           className="w-full border rounded-lg px-3 py-2"
         />
         {error && <p className="text-red-500 text-sm">{error}</p>}
