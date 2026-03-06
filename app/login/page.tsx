@@ -50,12 +50,6 @@ export default function LoginPage() {
         >
           {isSignUp ? "Registrarse" : "Entrar"}
         </button>
-        <p className="text-sm text-center text-gray-500">
-          {isSignUp ? "¿Ya tienes cuenta?" : "¿No tienes cuenta?"}{" "}
-          <button onClick={() => setIsSignUp(!isSignUp)} className="text-teal-600 underline">
-            {isSignUp ? "Inicia sesión" : "Regístrate"}
-          </button>
-        </p>
       </div>
     </div>
   )
