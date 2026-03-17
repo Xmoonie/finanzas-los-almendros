@@ -1,6 +1,6 @@
 "use client"
 import { exportCostLogToExcel } from "@/lib/export-costs"
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { AppShell } from "@/components/layout/app-shell"
@@ -214,17 +214,36 @@ const CATEGORY_BADGE: Record<string, string> = {
   arroz_granos: "bg-yellow-100 text-yellow-700",
 }
 
-function CostSummaryCards({ selectedDate }: { selectedDate: string }) {
+function CostSummaryCards({ selectedMonth, selectedDay }: { selectedMonth: string, selectedDay?: string }) {
   const { data } = useCost()
-  const month = selectedDate.substring(0, 7)
-  const daySummary = getCostSummaryForDate(data.entries, selectedDate)
-  const monthSummary = getCostSummaryForMonth(data.entries, month)
+  const daySummary = selectedDay ? getCostSummaryForDate(data.entries, selectedDay) : null
+  const monthSummary = getCostSummaryForMonth(data.entries, selectedMonth)
 
   const cards = [
-    { label: "Costo hoy", value: formatCurrency(daySummary.total_cost), sub: "Total ingredientes" },
-    { label: "Desperdicio hoy", value: formatCurrency(daySummary.waste_cost), sub: "Costo del desperdicio", warn: daySummary.waste_cost > 0 },
-    { label: "Costo del mes", value: formatCurrency(monthSummary.total_cost), sub: format(new Date(month + "-02"), "MMMM yyyy", { locale: es }) },
-    { label: "% Desperdicio", value: `${monthSummary.waste_percentage.toFixed(1)}%`, sub: "Del total del mes", warn: monthSummary.waste_percentage > 10 },
+    {
+      label: selectedDay ? "Costo del día" : "Costo del mes",
+      value: formatCurrency(selectedDay ? daySummary!.total_cost : monthSummary.total_cost),
+      sub: "Total ingredientes",
+      warn: false,
+    },
+    {
+      label: selectedDay ? "Desperdicio del día" : "Desperdicio del mes",
+      value: formatCurrency(selectedDay ? daySummary!.waste_cost : monthSummary.waste_cost),
+      sub: "Costo del desperdicio",
+      warn: (selectedDay ? daySummary!.waste_cost : monthSummary.waste_cost) > 0,
+    },
+    {
+      label: "Costo del mes",
+      value: formatCurrency(monthSummary.total_cost),
+      sub: format(new Date(selectedMonth + "-02"), "MMMM yyyy", { locale: es }),
+      warn: false,
+    },
+    {
+      label: "% Desperdicio",
+      value: `${monthSummary.waste_percentage.toFixed(1)}%`,
+      sub: "Del total del mes",
+      warn: monthSummary.waste_percentage > 10,
+    },
   ]
 
   return (
@@ -244,25 +263,34 @@ function CostSummaryCards({ selectedDate }: { selectedDate: string }) {
   )
 }
 
-function CostLogTable({ selectedDate }: { selectedDate: string }) {
+function CostLogTable({ selectedMonth, selectedDay }: { selectedMonth: string, selectedDay?: string }) {
   const { data, deleteCostEntry } = useCost()
-  const entries = data.entries.filter(e => e.date === selectedDate)
+  const entries = selectedDay
+    ? data.entries.filter(e => e.date === selectedDay)
+    : data.entries.filter(e => e.date.startsWith(selectedMonth))
 
   if (entries.length === 0) {
     return (
       <Card>
         <CardContent className="py-10 text-center text-sm text-muted-foreground">
-          No hay registros para esta fecha.
+          No hay registros para este período.
         </CardContent>
       </Card>
     )
   }
 
+  const [y, m] = selectedMonth.split("-")
+  const monthLabel = format(new Date(parseInt(y), parseInt(m) - 1, 1), "MMMM yyyy", { locale: es })
+  const monthLabelCap = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1)
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base">
-          Registros — {format(new Date(selectedDate + "T12:00:00"), "dd 'de' MMMM yyyy", { locale: es })}
+          {selectedDay
+            ? `Registros — ${format(new Date(selectedDay + "T12:00:00"), "dd 'de' MMMM yyyy", { locale: es })}`
+            : `Registros — ${monthLabelCap}`
+          }
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0">
@@ -270,6 +298,7 @@ function CostLogTable({ selectedDate }: { selectedDate: string }) {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Fecha</TableHead>
                 <TableHead>Categoría</TableHead>
                 <TableHead>Ingrediente</TableHead>
                 <TableHead className="text-right">Usado</TableHead>
@@ -285,6 +314,9 @@ function CostLogTable({ selectedDate }: { selectedDate: string }) {
             <TableBody>
               {entries.map(e => (
                 <TableRow key={e.id}>
+                  <TableCell className="text-xs text-muted-foreground tabular-nums">
+                    {format(new Date(e.date + "T12:00:00"), "dd/MM", { locale: es })}
+                  </TableCell>
                   <TableCell>
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${CATEGORY_BADGE[e.category]}`}>
                       {CATEGORY_LABELS[e.category]}
@@ -323,7 +355,31 @@ function CostLogTable({ selectedDate }: { selectedDate: string }) {
 
 function CostosContent() {
   const { isLoaded, data } = useCost()
-  const [selectedDate, setSelectedDate] = useState(() => format(new Date(), "yyyy-MM-dd"))
+  const currentMonth = format(new Date(), "yyyy-MM")
+  const [selectedMonth, setSelectedMonth] = useState(currentMonth)
+  const [selectedDay, setSelectedDay] = useState<string>("all")
+
+  const availableMonths = useMemo(() => {
+    const months = new Set(data.entries.map(e => e.date.substring(0, 7)))
+    if (!months.has(currentMonth)) months.add(currentMonth)
+    return Array.from(months).sort((a, b) => b.localeCompare(a))
+  }, [data.entries, currentMonth])
+
+  const availableDays = useMemo(() => {
+    const days = new Set(
+      data.entries
+        .filter(e => e.date.startsWith(selectedMonth))
+        .map(e => e.date)
+    )
+    return Array.from(days).sort((a, b) => b.localeCompare(a))
+  }, [data.entries, selectedMonth])
+
+  const handleMonthChange = (month: string) => {
+    setSelectedMonth(month)
+    setSelectedDay("all")
+  }
+
+  const filteredDay = selectedDay !== "all" ? selectedDay : undefined
 
   if (!isLoaded) {
     return (
@@ -339,33 +395,55 @@ function CostosContent() {
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-foreground">Control de Costos Diario</h2>
+          <h2 className="text-sm font-semibold text-foreground">Control de Costos</h2>
           <p className="text-xs text-muted-foreground">Carnes, vegetales y arroz/granos</p>
         </div>
-    <div className="flex items-center gap-2">
-  <Button
-    variant="outline"
-    size="sm"
-    className="gap-2"
-    onClick={() => exportCostLogToExcel(data.entries)}
-  >
-    <Download className="h-4 w-4" />
-    Exportar Excel
-  </Button>
-  <Label className="text-xs text-muted-foreground">Fecha</Label>
-  <Input
-    type="date"
-    className="w-auto text-sm"
-    value={selectedDate}
-    onChange={e => setSelectedDate(e.target.value)}
-  />
-</div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() => exportCostLogToExcel(data.entries)}
+          >
+            <Download className="h-4 w-4" />
+            Exportar Excel
+          </Button>
+
+          <Select value={selectedMonth} onValueChange={handleMonthChange}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="Mes" />
+            </SelectTrigger>
+            <SelectContent>
+              {availableMonths.map(m => {
+                const [y, mo] = m.split("-")
+                const label = format(new Date(parseInt(y), parseInt(mo) - 1, 1), "MMMM yyyy", { locale: es })
+                const capitalized = label.charAt(0).toUpperCase() + label.slice(1)
+                return <SelectItem key={m} value={m}>{capitalized}</SelectItem>
+              })}
+            </SelectContent>
+          </Select>
+
+          <Select value={selectedDay} onValueChange={setSelectedDay}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue placeholder="Todos los días" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los días</SelectItem>
+              {availableDays.map(d => (
+                <SelectItem key={d} value={d}>
+                  {format(new Date(d + "T12:00:00"), "dd 'de' MMMM", { locale: es })}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
-      <CostSummaryCards selectedDate={selectedDate} />
+
+      <CostSummaryCards selectedMonth={selectedMonth} selectedDay={filteredDay} />
       <CostLogForm />
-      <CostLogTable selectedDate={selectedDate} />
+      <CostLogTable selectedMonth={selectedMonth} selectedDay={filteredDay} />
     </div>
   )
 }
