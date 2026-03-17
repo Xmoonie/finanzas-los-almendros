@@ -1,37 +1,87 @@
 import { createClient } from "@/lib/supabase"
-import type { Transaction, Budget, Category, FinanceData, RecurringExpense, TransactionType } from "./types"
+import type { Transaction, Budget, Category, FinanceData, RecurringExpense, TransactionType, Business } from "./types"
 
 const supabase = createClient()
 
-export const DEFAULT_CATEGORIES: Category[] = [
-  { id: "cat-1", name: "Ventas", type: "income", color: "#0d9488" },
-  { id: "cat-2", name: "Servicios", type: "income", color: "#0ea5e9" },
-  { id: "cat-3", name: "Consultorias", type: "income", color: "#8b5cf6" },
-  { id: "cat-4", name: "Otros Ingresos", type: "income", color: "#64748b" },
-  { id: "cat-5", name: "Alquiler", type: "expense", color: "#ef4444" },
-  { id: "cat-6", name: "Servicios Publicos", type: "expense", color: "#f97316" },
-  { id: "cat-7", name: "Planilla", type: "expense", color: "#eab308" },
-  { id: "cat-8", name: "Suministros", type: "expense", color: "#84cc16" },
-  { id: "cat-9", name: "Marketing", type: "expense", color: "#06b6d4" },
-  { id: "cat-10", name: "Transporte", type: "expense", color: "#a855f7" },
-  { id: "cat-11", name: "Mantenimiento", type: "expense", color: "#ec4899" },
-  { id: "cat-12", name: "Otros Gastos", type: "expense", color: "#6b7280" },
+export const DEFAULT_CATEGORIES = (businessId: string): Omit<Category, "id">[] => [
+  { businessId, name: "Ventas", type: "income", color: "#0d9488" },
+  { businessId, name: "Servicios", type: "income", color: "#0ea5e9" },
+  { businessId, name: "Consultorias", type: "income", color: "#8b5cf6" },
+  { businessId, name: "Otros Ingresos", type: "income", color: "#64748b" },
+  { businessId, name: "Alquiler", type: "expense", color: "#ef4444" },
+  { businessId, name: "Servicios Publicos", type: "expense", color: "#f97316" },
+  { businessId, name: "Planilla", type: "expense", color: "#eab308" },
+  { businessId, name: "Suministros", type: "expense", color: "#84cc16" },
+  { businessId, name: "Marketing", type: "expense", color: "#06b6d4" },
+  { businessId, name: "Transporte", type: "expense", color: "#a855f7" },
+  { businessId, name: "Mantenimiento", type: "expense", color: "#ec4899" },
+  { businessId, name: "Otros Gastos", type: "expense", color: "#6b7280" },
 ]
 
-export async function loadFinanceData(): Promise<FinanceData> {
+// ─── Businesses ───────────────────────────────────────────────────────────────
+
+export async function loadBusinesses(): Promise<Business[]> {
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { transactions: [], budgets: [], categories: DEFAULT_CATEGORIES, recurringExpenses: [] }
+  if (!user) return []
+
+  const { data } = await supabase
+    .from("businesses")
+    .select("*")
+    .order("created_at", { ascending: true })
+
+  return (data || []).map(b => ({
+    id: b.id,
+    ownerId: b.owner_id,
+    name: b.name,
+    currency: b.currency,
+    createdAt: b.created_at,
+  }))
+}
+
+export async function createBusiness(name: string, currency = "HNL"): Promise<Business | null> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const { data } = await supabase
+    .from("businesses")
+    .insert({ owner_id: user.id, name, currency })
+    .select()
+    .single()
+
+  if (!data) return null
+
+  // Crear categorías default para el nuevo negocio
+  const cats = DEFAULT_CATEGORIES(data.id)
+  await supabase.from("categories").insert(
+    cats.map(c => ({ business_id: data.id, user_id: user.id, name: c.name, type: c.type, color: c.color }))
+  )
+
+  return {
+    id: data.id,
+    ownerId: data.owner_id,
+    name: data.name,
+    currency: data.currency,
+    createdAt: data.created_at,
+  }
+}
+
+// ─── Finance Data ──────────────────────────────────────────────────────────────
+
+export async function loadFinanceData(businessId: string): Promise<FinanceData> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { transactions: [], budgets: [], categories: [], recurringExpenses: [] }
 
   const [transactions, budgets, categories, recurringExpenses] = await Promise.all([
-    supabase.from("transactions").select("*").order("date", { ascending: false }),
-    supabase.from("budgets").select("*"),
-    supabase.from("categories").select("*"),
-    supabase.from("recurring_expenses").select("*"),
+    supabase.from("transactions").select("*").eq("business_id", businessId).order("date", { ascending: false }),
+    supabase.from("budgets").select("*").eq("business_id", businessId),
+    supabase.from("categories").select("*").eq("business_id", businessId),
+    supabase.from("recurring_expenses").select("*").eq("business_id", businessId),
   ])
 
   return {
     transactions: (transactions.data || []).map(t => ({
       id: t.id,
+      businessId: t.business_id,
       type: t.type,
       amount: t.amount,
       category: t.category,
@@ -41,13 +91,21 @@ export async function loadFinanceData(): Promise<FinanceData> {
     })),
     budgets: (budgets.data || []).map(b => ({
       id: b.id,
+      businessId: b.business_id,
       category: b.category,
       monthlyLimit: b.monthly_limit,
       month: b.month,
     })),
-    categories: categories.data?.length ? categories.data : DEFAULT_CATEGORIES,
+    categories: categories.data?.length ? categories.data.map(c => ({
+      id: c.id,
+      businessId: c.business_id,
+      name: c.name,
+      type: c.type,
+      color: c.color,
+    })) : [],
     recurringExpenses: (recurringExpenses.data || []).map(r => ({
       id: r.id,
+      businessId: r.business_id,
       category: r.category,
       description: r.description,
       payee: r.payee,
@@ -65,6 +123,7 @@ export async function addTransaction(data: FinanceData, transaction: Omit<Transa
 
   const { data: inserted } = await supabase.from("transactions").insert({
     user_id: user.id,
+    business_id: transaction.businessId,
     type: transaction.type,
     amount: transaction.amount,
     category: transaction.category,
@@ -101,6 +160,7 @@ export async function addBudget(data: FinanceData, budget: Omit<Budget, "id">): 
 
   const { data: inserted } = await supabase.from("budgets").insert({
     user_id: user.id,
+    business_id: budget.businessId,
     category: budget.category,
     monthly_limit: budget.monthlyLimit,
     month: budget.month,
@@ -131,6 +191,7 @@ export async function addRecurringExpense(data: FinanceData, expense: Omit<Recur
 
   const { data: inserted } = await supabase.from("recurring_expenses").insert({
     user_id: user.id,
+    business_id: expense.businessId,
     category: expense.category,
     description: expense.description,
     payee: expense.payee,
@@ -177,6 +238,7 @@ export async function addCategory(data: FinanceData, category: Omit<Category, "i
 
   const { data: inserted } = await supabase.from("categories").insert({
     user_id: user.id,
+    business_id: category.businessId,
     name: category.name,
     type: category.type,
     color: category.color,
@@ -190,6 +252,8 @@ export async function deleteCategory(data: FinanceData, id: string): Promise<Fin
   await supabase.from("categories").delete().eq("id", id)
   return { ...data, categories: data.categories.filter(c => c.id !== id) }
 }
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
 
 export function formatCurrency(amount: number): string {
   return `L ${amount.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -212,7 +276,7 @@ export function getMonthlyRecurringTotal(recurringExpenses: RecurringExpense[]):
       }
     }, 0)
 }
-// Balance utilities
+
 export type BalancePeriod = "day" | "week" | "month" | "all"
 
 export interface BalanceData {
@@ -261,9 +325,9 @@ export function getBalanceForPeriod(
     }
     case "month": {
       const monthStart = startOfMonth(now)
-      const monthEnd = endOfMonth(now)
+      const monthEndDate = endOfMonth(now)
       const monthStartStr = format(monthStart, "yyyy-MM-dd")
-      const monthEndStr = format(monthEnd, "yyyy-MM-dd")
+      const monthEndStr = format(monthEndDate, "yyyy-MM-dd")
       filtered = transactions.filter(t => t.date >= monthStartStr && t.date <= monthEndStr)
       periodLabel = format(now, "MMMM yyyy", { locale: es })
       daysInPeriod = differenceInDays(now, monthStart) + 1
@@ -301,7 +365,6 @@ export function getBalanceForPeriod(
   }
 }
 
-// Anomaly detection
 export interface Anomaly {
   type: "spike" | "drop"
   category: string
@@ -313,7 +376,7 @@ export interface Anomaly {
 }
 
 export function detectAnomalies(transactions: Transaction[]): Anomaly[] {
-  const { format, startOfMonth, endOfMonth, parseISO } = require("date-fns")
+  const { format, parseISO } = require("date-fns")
   const { es } = require("date-fns/locale")
   const now = new Date()
   const anomalies: Anomaly[] = []

@@ -13,7 +13,7 @@ export function exportCostLogToExcel(entries: CostLogEntry[]) {
   const wb = XLSX.utils.book_new()
 
   // ── Sheet 1: Raw Log ──────────────────────────────────────────────
-const rawRows: (string | number)[][] = [
+  const rawRows: (string | number)[][] = [
     ["Fecha", "Categoría", "Ingrediente", "Usado", "Desperdicio", "Unidad", "Costo/U (L)", "Total (L)", "Desperdicio (L)", "Registrado por", "Notas"],
     ...entries.map(e => [
       e.date,
@@ -39,30 +39,31 @@ const rawRows: (string | number)[][] = [
   // ── Sheet 2: Monthly Summary by Category ─────────────────────────
   const months = [...new Set(entries.map(e => e.date.substring(0, 7)))].sort()
   const summaryRows: (string | number)[][] = [
-  ["Mes", "Carne (L)", "Vegetales (L)", "Arroz/Granos (L)", "Total (L)"]
-]
+    ["Mes", "Carne (L)", "Vegetales (L)", "Arroz/Granos (L)", "Total (L)"]
+  ]
   for (const month of months) {
     const m = entries.filter(e => e.date.startsWith(month))
     const carne = m.filter(e => e.category === "carne").reduce((s, e) => s + e.total_cost, 0)
     const veg = m.filter(e => e.category === "vegetales").reduce((s, e) => s + e.total_cost, 0)
     const grains = m.filter(e => e.category === "arroz_granos").reduce((s, e) => s + e.total_cost, 0)
     const label = format(new Date(month + "-02"), "MMMM yyyy", { locale: es })
-    summaryRows.push([label, carne, veg, grains, carne + veg + grains])
+    const summaryRow: (string | number)[] = [label, carne, veg, grains, carne + veg + grains]
+    summaryRows.push(summaryRow)
   }
-  // Totals row
-  summaryRows.push([
+  const summaryTotalRow: (string | number)[] = [
     "TOTAL",
     entries.filter(e => e.category === "carne").reduce((s, e) => s + e.total_cost, 0),
     entries.filter(e => e.category === "vegetales").reduce((s, e) => s + e.total_cost, 0),
     entries.filter(e => e.category === "arroz_granos").reduce((s, e) => s + e.total_cost, 0),
     entries.reduce((s, e) => s + e.total_cost, 0),
-  ])
+  ]
+  summaryRows.push(summaryTotalRow)
   const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows)
   wsSummary["!cols"] = [{ wch: 18 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 14 }]
   XLSX.utils.book_append_sheet(wb, wsSummary, "Resumen Mensual")
 
   // ── Sheet 3: Waste Report ─────────────────────────────────────────
-  const wasteRows = [
+  const wasteRows: (string | number)[][] = [
     ["Mes", "Costo Total (L)", "Desperdicio (L)", "% Desperdicio"]
   ]
   for (const month of months) {
@@ -71,17 +72,18 @@ const rawRows: (string | number)[][] = [
     const waste = m.reduce((s, e) => s + e.waste_cost, 0)
     const pct = total > 0 ? (waste / total) * 100 : 0
     const label = format(new Date(month + "-02"), "MMMM yyyy", { locale: es })
-    wasteRows.push([label, total, waste, parseFloat(pct.toFixed(2))])
+    const wasteRow: (string | number)[] = [label, total, waste, pct]
+    wasteRows.push(wasteRow)
   }
-  // Totals row
   const totalAll = entries.reduce((s, e) => s + e.total_cost, 0)
   const wasteAll = entries.reduce((s, e) => s + e.waste_cost, 0)
-  wasteRows.push([
+  const wasteTotalRow: (string | number)[] = [
     "TOTAL",
     totalAll,
     wasteAll,
-    parseFloat((totalAll > 0 ? (wasteAll / totalAll) * 100 : 0).toFixed(2))
-  ])
+    totalAll > 0 ? (wasteAll / totalAll) * 100 : 0
+  ]
+  wasteRows.push(wasteTotalRow)
   const wsWaste = XLSX.utils.aoa_to_sheet(wasteRows)
   wsWaste["!cols"] = [{ wch: 18 }, { wch: 16 }, { wch: 16 }, { wch: 14 }]
   XLSX.utils.book_append_sheet(wb, wsWaste, "Reporte Desperdicio")

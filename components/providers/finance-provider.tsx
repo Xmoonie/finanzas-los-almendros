@@ -1,9 +1,11 @@
 "use client"
 
 import React, { createContext, useContext, useState, useEffect } from "react"
-import type { FinanceData, Transaction, Budget, RecurringExpense, Category } from "@/lib/types"
+import type { FinanceData, Transaction, Budget, RecurringExpense, Category, Business } from "@/lib/types"
 import {
   loadFinanceData,
+  loadBusinesses,
+  createBusiness,
   addTransaction as addTx,
   updateTransaction as updateTx,
   deleteTransaction as deleteTx,
@@ -21,6 +23,10 @@ import {
 interface FinanceContextValue {
   data: FinanceData
   isLoaded: boolean
+  businesses: Business[]
+  activeBusiness: Business | null
+  setActiveBusiness: (business: Business) => void
+  createBusiness: (name: string, currency?: string) => Promise<Business | null>
   addTransaction: (transaction: Omit<Transaction, "id">) => Promise<void>
   updateTransaction: (transaction: Transaction) => Promise<void>
   deleteTransaction: (id: string) => Promise<void>
@@ -53,16 +59,47 @@ const EMPTY: FinanceData = {
 export function FinanceProvider({ children }: { children: React.ReactNode }) {
   const [data, setData] = useState<FinanceData>(EMPTY)
   const [isLoaded, setIsLoaded] = useState(false)
+  const [businesses, setBusinesses] = useState<Business[]>([])
+  const [activeBusiness, setActiveBusinessState] = useState<Business | null>(null)
 
+  // Cargar negocios al iniciar
   useEffect(() => {
-    loadFinanceData().then(loaded => {
+    loadBusinesses().then(biz => {
+      setBusinesses(biz)
+      if (biz.length > 0) {
+        setActiveBusinessState(biz[0])
+      } else {
+        setIsLoaded(true)
+      }
+    })
+  }, [])
+
+  // Cargar datos cuando cambia el negocio activo
+  useEffect(() => {
+    if (!activeBusiness) return
+    setIsLoaded(false)
+    loadFinanceData(activeBusiness.id).then(loaded => {
       setData(loaded)
       setIsLoaded(true)
     }).catch(() => {
       setData(EMPTY)
       setIsLoaded(true)
     })
-  }, [])
+  }, [activeBusiness])
+
+  const setActiveBusiness = (business: Business) => {
+    setActiveBusinessState(business)
+    setData(EMPTY)
+  }
+
+  const handleCreateBusiness = async (name: string, currency = "HNL") => {
+    const newBiz = await createBusiness(name, currency)
+    if (newBiz) {
+      setBusinesses(prev => [...prev, newBiz])
+      setActiveBusinessState(newBiz)
+    }
+    return newBiz
+  }
 
   const handleAddTransaction = async (transaction: Omit<Transaction, "id">) => {
     const updated = await addTx(data, transaction)
@@ -129,6 +166,10 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
       value={{
         data,
         isLoaded,
+        businesses,
+        activeBusiness,
+        setActiveBusiness,
+        createBusiness: handleCreateBusiness,
         addTransaction: handleAddTransaction,
         updateTransaction: handleUpdateTransaction,
         deleteTransaction: handleDeleteTransaction,
