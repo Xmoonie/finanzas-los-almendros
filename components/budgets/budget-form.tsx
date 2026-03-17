@@ -47,7 +47,7 @@ interface BudgetFormProps {
 }
 
 export function BudgetForm({ open, onOpenChange, month, budget }: BudgetFormProps) {
-  const { data, addBudget, updateBudget } = useFinance()
+  const { data, addBudget, updateBudget, activeBusiness } = useFinance()
   const expenseCategories = data.categories.filter(c => c.type === "expense")
 
   const existingBudgetCategories = data.budgets
@@ -66,15 +66,19 @@ export function BudgetForm({ open, onOpenChange, month, budget }: BudgetFormProp
   })
 
   function onSubmit(values: FormValues) {
-    if (budget) {
-      updateBudget({ ...budget, monthlyLimit: values.monthlyLimit, category: values.category })
-    } else {
-      addBudget({ category: values.category, monthlyLimit: values.monthlyLimit, month })
-    }
-    form.reset()
-    onOpenChange(false)
+  if (budget) {
+    updateBudget({ ...budget, monthlyLimit: values.monthlyLimit, category: values.category })
+  } else {
+    addBudget({ 
+      category: values.category, 
+      monthlyLimit: values.monthlyLimit, 
+      month,
+      businessId: activeBusiness?.id ?? "",
+    })
   }
-
+  form.reset()
+  onOpenChange(false)
+}
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[400px]">
