@@ -100,12 +100,12 @@ interface CategorySectionProps {
 }
 
 function CategorySection({ type, title, description }: CategorySectionProps) {
-  const { data, addCategory, deleteCategory } = useFinance()
+  const { data, addCategory, deleteCategory, activeBusiness } = useFinance()
   const categories = data.categories.filter(c => c.type === type)
 
-  const handleAdd = (name: string, color: string) => {
-    addCategory({ name, color, type })
-  }
+ const handleAdd = (name: string, color: string) => {
+  addCategory({ name, color, type, businessId: activeBusiness?.id ?? "" })
+}
 
   return (
     <Card>

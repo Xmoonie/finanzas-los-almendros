@@ -66,7 +66,7 @@ interface RecurringFormProps {
 }
 
 export function RecurringForm({ open, onOpenChange, expense }: RecurringFormProps) {
-  const { data, addRecurringExpense, updateRecurringExpense } = useFinance()
+  const { data, addRecurringExpense, updateRecurringExpense, activeBusiness } = useFinance()
   const expenseCategories = data.categories.filter(c => c.type === "expense")
 
   const form = useForm<FormValues>({
@@ -91,25 +91,26 @@ export function RecurringForm({ open, onOpenChange, expense }: RecurringFormProp
   })
 
   function onSubmit(values: FormValues) {
-    const recData = {
-      category: values.category,
-      description: values.description,
-      payee: values.payee,
-      amount: values.amount,
-      frequency: values.frequency,
-      startDate: format(values.startDate, "yyyy-MM-dd"),
-      active: true,
-    }
-
-    if (expense) {
-      updateRecurringExpense({ ...recData, id: expense.id, active: expense.active })
-    } else {
-      addRecurringExpense(recData)
-    }
-
-    form.reset()
-    onOpenChange(false)
+  const recData = {
+    businessId: activeBusiness?.id ?? "",
+    category: values.category,
+    description: values.description,
+    payee: values.payee,
+    amount: values.amount,
+    frequency: values.frequency,
+    startDate: format(values.startDate, "yyyy-MM-dd"),
+    active: true,
   }
+
+  if (expense) {
+    updateRecurringExpense({ ...recData, id: expense.id, active: expense.active })
+  } else {
+    addRecurringExpense(recData)
+  }
+
+  form.reset()
+  onOpenChange(false)
+}
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

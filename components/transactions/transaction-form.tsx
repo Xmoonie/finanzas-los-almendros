@@ -59,7 +59,7 @@ interface TransactionFormProps {
 }
 
 export function TransactionForm({ open, onOpenChange, type, transaction }: TransactionFormProps) {
-  const { data, addTransaction, updateTransaction } = useFinance()
+  const { data, addTransaction, updateTransaction, activeBusiness } = useFinance()
   const categories = data.categories.filter(c => c.type === type)
 
   const form = useForm<FormValues>({
@@ -80,26 +80,27 @@ export function TransactionForm({ open, onOpenChange, type, transaction }: Trans
           date: new Date(),
         },
   })
-
-  function onSubmit(values: FormValues) {
-    const txData = {
-      type,
-      amount: values.amount,
-      category: values.category,
-      description: values.description,
-      payee: values.payee,
-      date: format(values.date, "yyyy-MM-dd"),
-    }
-
-    if (transaction) {
-      updateTransaction({ ...txData, id: transaction.id })
-    } else {
-      addTransaction(txData)
-    }
-
-    form.reset()
-    onOpenChange(false)
+function onSubmit(values: FormValues) {
+  const txData = {
+    type,
+    businessId: data.transactions[0]?.businessId ?? activeBusiness?.id ?? "",
+    amount: values.amount,
+    category: values.category,
+    description: values.description,
+    payee: values.payee,
+    date: format(values.date, "yyyy-MM-dd"),
   }
+
+  if (transaction) {
+    updateTransaction({ ...txData, id: transaction.id })
+  } else {
+    addTransaction(txData)
+  }
+
+  form.reset()
+  onOpenChange(false)
+}
+ 
 
   const isIncome = type === "income"
 
