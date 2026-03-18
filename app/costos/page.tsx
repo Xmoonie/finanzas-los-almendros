@@ -12,6 +12,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -33,8 +39,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Trash2, PlusCircle, Download } from "lucide-react"
-import type { IngredientCategory, MeatType, Unit } from "@/lib/cost-types"
+import { Trash2, PlusCircle, Download, Pencil } from "lucide-react"
+import type { IngredientCategory, MeatType, Unit, CostLogEntry } from "@/lib/cost-types"
 
 const CATEGORY_LABELS: Record<IngredientCategory, string> = {
   carne: "🥩 Carne",
@@ -264,10 +270,40 @@ function CostSummaryCards({ selectedMonth, selectedDay }: { selectedMonth: strin
 }
 
 function CostLogTable({ selectedMonth, selectedDay }: { selectedMonth: string, selectedDay?: string }) {
-  const { data, deleteCostEntry } = useCost()
+  const { data, deleteCostEntry, updateCostEntry } = useCost()
+  const [editEntry, setEditEntry] = useState<CostLogEntry | null>(null)
+  const [editForm, setEditForm] = useState<Partial<CostLogEntry>>({})
+  const [saving, setSaving] = useState(false)
+
   const entries = selectedDay
     ? data.entries.filter(e => e.date === selectedDay)
     : data.entries.filter(e => e.date.startsWith(selectedMonth))
+
+  const setEdit = (field: string, value: string) =>
+    setEditForm(prev => ({ ...prev, [field]: value }))
+
+  const handleEditOpen = (entry: CostLogEntry) => {
+    setEditEntry(entry)
+    setEditForm({ ...entry })
+  }
+
+  const handleEditSave = async () => {
+    if (!editEntry) return
+    setSaving(true)
+    await updateCostEntry({
+      ...editEntry,
+      ...editForm,
+      quantity_used: parseFloat(String(editForm.quantity_used ?? editEntry.quantity_used)),
+      quantity_wasted: parseFloat(String(editForm.quantity_wasted ?? editEntry.quantity_wasted)),
+      unit_cost: parseFloat(String(editForm.unit_cost ?? editEntry.unit_cost)),
+    } as CostLogEntry)
+    setSaving(false)
+    setEditEntry(null)
+  }
+
+  const [y, m] = selectedMonth.split("-")
+  const monthLabel = format(new Date(parseInt(y), parseInt(m) - 1, 1), "MMMM yyyy", { locale: es })
+  const monthLabelCap = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1)
 
   if (entries.length === 0) {
     return (
@@ -279,77 +315,139 @@ function CostLogTable({ selectedMonth, selectedDay }: { selectedMonth: string, s
     )
   }
 
-  const [y, m] = selectedMonth.split("-")
-  const monthLabel = format(new Date(parseInt(y), parseInt(m) - 1, 1), "MMMM yyyy", { locale: es })
-  const monthLabelCap = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1)
-
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">
-          {selectedDay
-            ? `Registros — ${format(new Date(selectedDay + "T12:00:00"), "dd 'de' MMMM yyyy", { locale: es })}`
-            : `Registros — ${monthLabelCap}`
-          }
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-0">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Categoría</TableHead>
-                <TableHead>Ingrediente</TableHead>
-                <TableHead className="text-right">Usado</TableHead>
-                <TableHead className="text-right">Desperdicio</TableHead>
-                <TableHead>Unidad</TableHead>
-                <TableHead className="text-right">C/U (L)</TableHead>
-                <TableHead className="text-right">Total (L)</TableHead>
-                <TableHead className="text-right">Desp. (L)</TableHead>
-                <TableHead>Por</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {entries.map(e => (
-                <TableRow key={e.id}>
-                  <TableCell className="text-xs text-muted-foreground tabular-nums">
-                    {format(new Date(e.date + "T12:00:00"), "dd/MM", { locale: es })}
-                  </TableCell>
-                  <TableCell>
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${CATEGORY_BADGE[e.category]}`}>
-                      {CATEGORY_LABELS[e.category]}
-                    </span>
-                  </TableCell>
-                  <TableCell className="font-medium">{e.item}</TableCell>
-                  <TableCell className="text-right">{e.quantity_used}</TableCell>
-                  <TableCell className="text-right">
-                    {e.quantity_wasted > 0 ? <span className="text-orange-500">{e.quantity_wasted}</span> : "—"}
-                  </TableCell>
-                  <TableCell>{e.unit}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(e.unit_cost)}</TableCell>
-                  <TableCell className="text-right font-semibold">{formatCurrency(e.total_cost)}</TableCell>
-                  <TableCell className="text-right">
-                    {e.waste_cost > 0 ? <span className="text-orange-500">{formatCurrency(e.waste_cost)}</span> : "—"}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{e.logged_by}</TableCell>
-                  <TableCell>
-                    <Button
-                      variant="ghost" size="icon"
-                      onClick={() => deleteCostEntry(e.id)}
-                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </TableCell>
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">
+            {selectedDay
+              ? `Registros — ${format(new Date(selectedDay + "T12:00:00"), "dd 'de' MMMM yyyy", { locale: es })}`
+              : `Registros — ${monthLabelCap}`
+            }
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead>Categoría</TableHead>
+                  <TableHead>Ingrediente</TableHead>
+                  <TableHead className="text-right">Usado</TableHead>
+                  <TableHead className="text-right">Desperdicio</TableHead>
+                  <TableHead>Unidad</TableHead>
+                  <TableHead className="text-right">C/U (L)</TableHead>
+                  <TableHead className="text-right">Total (L)</TableHead>
+                  <TableHead className="text-right">Desp. (L)</TableHead>
+                  <TableHead>Por</TableHead>
+                  <TableHead></TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </CardContent>
-    </Card>
+              </TableHeader>
+              <TableBody>
+                {entries.map(e => (
+                  <TableRow key={e.id}>
+                    <TableCell className="text-xs text-muted-foreground tabular-nums">
+                      {format(new Date(e.date + "T12:00:00"), "dd/MM", { locale: es })}
+                    </TableCell>
+                    <TableCell>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${CATEGORY_BADGE[e.category]}`}>
+                        {CATEGORY_LABELS[e.category]}
+                      </span>
+                    </TableCell>
+                    <TableCell className="font-medium">{e.item}</TableCell>
+                    <TableCell className="text-right">{e.quantity_used}</TableCell>
+                    <TableCell className="text-right">
+                      {e.quantity_wasted > 0 ? <span className="text-orange-500">{e.quantity_wasted}</span> : "—"}
+                    </TableCell>
+                    <TableCell>{e.unit}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(e.unit_cost)}</TableCell>
+                    <TableCell className="text-right font-semibold">{formatCurrency(e.total_cost)}</TableCell>
+                    <TableCell className="text-right">
+                      {e.waste_cost > 0 ? <span className="text-orange-500">{formatCurrency(e.waste_cost)}</span> : "—"}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{e.logged_by}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost" size="icon"
+                          onClick={() => handleEditOpen(e)}
+                          className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost" size="icon"
+                          onClick={() => deleteCostEntry(e.id)}
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Dialog open={!!editEntry} onOpenChange={open => { if (!open) setEditEntry(null) }}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Editar Registro</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-2 pt-2">
+            <div className="flex flex-col gap-1.5">
+              <Label>Fecha</Label>
+              <Input type="date" value={String(editForm.date ?? "")} onChange={e => setEdit("date", e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Registrado por</Label>
+              <Input value={String(editForm.logged_by ?? "")} onChange={e => setEdit("logged_by", e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Ingrediente</Label>
+              <Input value={String(editForm.item ?? "")} onChange={e => setEdit("item", e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Unidad</Label>
+              <Select value={String(editForm.unit ?? "lb")} onValueChange={v => setEdit("unit", v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(UNIT_LABELS).map(([k, v]) => (
+                    <SelectItem key={k} value={k}>{v}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Cantidad utilizada</Label>
+              <Input type="number" min="0" step="0.1" value={String(editForm.quantity_used ?? "")} onChange={e => setEdit("quantity_used", e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Cantidad desperdiciada</Label>
+              <Input type="number" min="0" step="0.1" value={String(editForm.quantity_wasted ?? "")} onChange={e => setEdit("quantity_wasted", e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Costo por unidad (L)</Label>
+              <Input type="number" min="0" step="0.01" value={String(editForm.unit_cost ?? "")} onChange={e => setEdit("unit_cost", e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Observaciones</Label>
+              <Input value={String(editForm.notes ?? "")} onChange={e => setEdit("notes", e.target.value)} />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setEditEntry(null)}>Cancelar</Button>
+            <Button onClick={handleEditSave} disabled={saving}>
+              {saving ? "Guardando..." : "Guardar Cambios"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 

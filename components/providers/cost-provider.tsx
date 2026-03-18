@@ -6,12 +6,14 @@ import {
   loadCostLog,
   addCostEntry as addEntry,
   deleteCostEntry as deleteEntry,
+  updateCostEntry as updateEntry,
 } from "@/lib/cost-store"
 
 interface CostContextValue {
   data: CostLogData
   isLoaded: boolean
   addCostEntry: (entry: Omit<CostLogEntry, "id" | "total_cost" | "waste_cost">) => Promise<void>
+  updateCostEntry: (entry: CostLogEntry) => Promise<void>
   deleteCostEntry: (id: string) => Promise<void>
 }
 
@@ -46,6 +48,11 @@ export function CostProvider({ children }: { children: React.ReactNode }) {
     setData(updated)
   }
 
+  const handleUpdateEntry = async (entry: CostLogEntry) => {
+    const updated = await updateEntry(data, entry)
+    setData(updated)
+  }
+
   const handleDeleteEntry = async (id: string) => {
     const updated = await deleteEntry(data, id)
     setData(updated)
@@ -57,6 +64,7 @@ export function CostProvider({ children }: { children: React.ReactNode }) {
         data,
         isLoaded,
         addCostEntry: handleAddEntry,
+        updateCostEntry: handleUpdateEntry,
         deleteCostEntry: handleDeleteEntry,
       }}
     >

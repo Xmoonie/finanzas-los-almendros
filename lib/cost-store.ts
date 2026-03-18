@@ -104,3 +104,32 @@ export function getCostSummaryForMonth(entries: CostLogEntry[], month: string) {
     },
   }
 }
+
+export async function updateCostEntry(
+  data: CostLogData,
+  entry: CostLogEntry
+): Promise<CostLogData> {
+  const total_cost = (entry.quantity_used + entry.quantity_wasted) * entry.unit_cost
+  const waste_cost = entry.quantity_wasted * entry.unit_cost
+
+  await supabase
+    .from("cost_log")
+    .update({
+      date: entry.date,
+      category: entry.category,
+      item: entry.item,
+      meat_type: entry.meat_type ?? null,
+      quantity_used: entry.quantity_used,
+      quantity_wasted: entry.quantity_wasted,
+      unit: entry.unit,
+      unit_cost: entry.unit_cost,
+      total_cost,
+      waste_cost,
+      notes: entry.notes ?? null,
+      logged_by: entry.logged_by,
+    })
+    .eq("id", entry.id)
+
+  const updated: CostLogEntry = { ...entry, total_cost, waste_cost }
+  return { entries: data.entries.map(e => e.id === entry.id ? updated : e) }
+}
