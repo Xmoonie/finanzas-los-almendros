@@ -1,17 +1,21 @@
 "use client"
 
 import { useMemo } from "react"
+import { format } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useFinance } from "@/components/providers/finance-provider"
+import { useCost } from "@/components/providers/cost-provider"
 import { formatCurrency } from "@/lib/finance-store"
 import type { Transaction } from "@/lib/types"
 
 interface ProfitLossProps {
   transactions: Transaction[]
+  dateRange: { from: Date, to: Date }
 }
 
-export function ProfitLoss({ transactions }: ProfitLossProps) {
+export function ProfitLoss({ transactions, dateRange }: ProfitLossProps) {
   const { data } = useFinance()
+  const { data: costData } = useCost()
 
   const results = useMemo(() => {
     const income = transactions
@@ -20,12 +24,22 @@ export function ProfitLoss({ transactions }: ProfitLossProps) {
 
     const expenseTransactions = transactions.filter(t => t.type === "expense")
 
-    const cogs = expenseTransactions
+    // COGS desde transacciones (categorías marcadas como cogs)
+    const cogsFromTransactions = expenseTransactions
       .filter(t => {
         const cat = data.categories.find(c => c.name === t.category)
         return cat?.expenseType === "cogs"
       })
       .reduce((sum, t) => sum + t.amount, 0)
+
+    // COGS desde Control de Costos (cost_log filtrado por rango)
+    const fromStr = format(dateRange.from, "yyyy-MM-dd")
+    const toStr = format(dateRange.to, "yyyy-MM-dd")
+    const cogsFromCostLog = costData.entries
+      .filter(e => e.date >= fromStr && e.date <= toStr)
+      .reduce((sum, e) => sum + e.total_cost, 0)
+
+    const cogs = cogsFromTransactions + cogsFromCostLog
 
     const opex = expenseTransactions
       .filter(t => {
@@ -40,7 +54,6 @@ export function ProfitLoss({ transactions }: ProfitLossProps) {
     const operatingProfit = grossProfit - opex
     const operatingMargin = income > 0 ? (operatingProfit / income) * 100 : 0
 
-    // Breakdown de opex por categoría
     const opexByCategory: Record<string, number> = {}
     expenseTransactions
       .filter(t => {
@@ -51,8 +64,19 @@ export function ProfitLoss({ transactions }: ProfitLossProps) {
         opexByCategory[t.category] = (opexByCategory[t.category] || 0) + t.amount
       })
 
-    return { income, cogs, opex, grossProfit, grossMargin, operatingProfit, operatingMargin, opexByCategory }
-  }, [transactions, data.categories])
+    return {
+      income,
+      cogsFromTransactions,
+      cogsFromCostLog,
+      cogs,
+      opex,
+      grossProfit,
+      grossMargin,
+      operatingProfit,
+      operatingMargin,
+      opexByCategory,
+    }
+  }, [transactions, data.categories, costData.entries, dateRange])
 
   const Row = ({ label, value, bold, color, indent }: {
     label: string
@@ -76,16 +100,19 @@ export function ProfitLoss({ transactions }: ProfitLossProps) {
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
 
-        {/* Ingresos */}
         <Row label="Ventas" value={results.income} bold color="text-success" />
 
-        {/* COGS */}
         <div className="mt-2">
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Costo de Ventas</span>
-          <Row label="COGS" value={results.cogs} indent color="text-destructive" />
+          {results.cogsFromCostLog > 0 && (
+            <Row label="Ingredientes (Control de Costos)" value={results.cogsFromCostLog} indent color="text-destructive" />
+          )}
+          {results.cogsFromTransactions > 0 && (
+            <Row label="Suministros" value={results.cogsFromTransactions} indent color="text-destructive" />
+          )}
+          <Row label="Total COGS" value={results.cogs} bold color="text-destructive" />
         </div>
 
-        {/* Utilidad Bruta */}
         <div className="rounded-lg bg-muted/50 px-3 py-2 flex items-center justify-between mt-1">
           <span className="text-sm font-semibold">Utilidad Bruta</span>
           <div className="flex items-center gap-3">
@@ -96,7 +123,6 @@ export function ProfitLoss({ transactions }: ProfitLossProps) {
           </div>
         </div>
 
-        {/* Gastos Operativos */}
         <div className="mt-2">
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Gastos Operativos</span>
           {Object.entries(results.opexByCategory)
@@ -107,7 +133,6 @@ export function ProfitLoss({ transactions }: ProfitLossProps) {
           <Row label="Total Operativos" value={results.opex} bold color="text-destructive" />
         </div>
 
-        {/* Utilidad Operativa */}
         <div className={`rounded-lg px-3 py-2 flex items-center justify-between mt-1 ${
           results.operatingProfit >= 0 ? "bg-success/10" : "bg-destructive/10"
         }`}>
