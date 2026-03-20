@@ -18,6 +18,13 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import type { TransactionType } from "@/lib/types"
 
@@ -30,12 +37,13 @@ const PRESET_COLORS = [
 
 interface AddCategoryFormProps {
   type: TransactionType
-  onAdd: (name: string, color: string) => void
+  onAdd: (name: string, color: string, expenseType: "cogs" | "opex") => void
 }
 
 function AddCategoryForm({ type, onAdd }: AddCategoryFormProps) {
   const [name, setName] = useState("")
   const [color, setColor] = useState(type === "income" ? "#0d9488" : "#ef4444")
+  const [expenseType, setExpenseType] = useState<"cogs" | "opex">("opex")
   const [error, setError] = useState("")
 
   const handleSubmit = () => {
@@ -44,17 +52,18 @@ function AddCategoryForm({ type, onAdd }: AddCategoryFormProps) {
       setError("El nombre no puede estar vacío")
       return
     }
-    onAdd(trimmed, color)
+    onAdd(trimmed, color, expenseType)
     setName("")
     setColor(type === "income" ? "#0d9488" : "#ef4444")
+    setExpenseType("opex")
     setError("")
   }
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-dashed p-4 bg-muted/30">
       <p className="text-sm font-medium text-muted-foreground">Nueva categoría</p>
-      <div className="flex gap-2 items-end">
-        <div className="flex-1">
+      <div className="flex gap-2 items-end flex-wrap">
+        <div className="flex-1 min-w-[160px]">
           <Label htmlFor={`name-${type}`} className="text-xs mb-1 block">Nombre</Label>
           <Input
             id={`name-${type}`}
@@ -66,6 +75,20 @@ function AddCategoryForm({ type, onAdd }: AddCategoryFormProps) {
           />
           {error && <p className="text-xs text-destructive mt-1">{error}</p>}
         </div>
+        {type === "expense" && (
+          <div className="min-w-[140px]">
+            <Label className="text-xs mb-1 block">Tipo</Label>
+            <Select value={expenseType} onValueChange={v => setExpenseType(v as "cogs" | "opex")}>
+              <SelectTrigger className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="cogs">COGS</SelectItem>
+                <SelectItem value="opex">Operativo</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         <div>
           <Label className="text-xs mb-1 block">Color</Label>
           <div className="flex gap-1 flex-wrap w-40">
@@ -103,9 +126,9 @@ function CategorySection({ type, title, description }: CategorySectionProps) {
   const { data, addCategory, deleteCategory, activeBusiness } = useFinance()
   const categories = data.categories.filter(c => c.type === type)
 
- const handleAdd = (name: string, color: string) => {
-  addCategory({ name, color, type, businessId: activeBusiness?.id ?? "" })
-}
+  const handleAdd = (name: string, color: string, expenseType: "cogs" | "opex") => {
+    addCategory({ name, color, type, businessId: activeBusiness?.id ?? "", expenseType })
+  }
 
   return (
     <Card>
@@ -124,7 +147,6 @@ function CategorySection({ type, title, description }: CategorySectionProps) {
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {/* Category list */}
         <div className="flex flex-col gap-2">
           {categories.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">
@@ -142,9 +164,18 @@ function CategorySection({ type, title, description }: CategorySectionProps) {
                     style={{ backgroundColor: cat.color }}
                   />
                   <span className="text-sm font-medium">{cat.name}</span>
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4" style={{ borderColor: cat.color, color: cat.color }}>
-                    {cat.color}
-                  </Badge>
+                  {type === "expense" && (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] px-1.5 py-0 h-4"
+                      style={{
+                        borderColor: cat.expenseType === "cogs" ? "#f97316" : "#6b7280",
+                        color: cat.expenseType === "cogs" ? "#f97316" : "#6b7280",
+                      }}
+                    >
+                      {cat.expenseType === "cogs" ? "COGS" : "Operativo"}
+                    </Badge>
+                  )}
                 </div>
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
@@ -160,7 +191,7 @@ function CategorySection({ type, title, description }: CategorySectionProps) {
                     <AlertDialogHeader>
                       <AlertDialogTitle>¿Eliminar categoría?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        Esta acción eliminará la categoría <strong>{cat.name}</strong>. Las transacciones existentes con esta categoría no serán afectadas, pero no podrás asignar esta categoría a nuevas transacciones.
+                        Esta acción eliminará la categoría <strong>{cat.name}</strong>. Las transacciones existentes con esta categoría no serán afectadas.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -178,8 +209,6 @@ function CategorySection({ type, title, description }: CategorySectionProps) {
             ))
           )}
         </div>
-
-        {/* Add form */}
         <AddCategoryForm type={type} onAdd={handleAdd} />
       </CardContent>
     </Card>
