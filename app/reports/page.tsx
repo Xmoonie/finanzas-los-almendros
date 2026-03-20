@@ -13,6 +13,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { useFinance } from "@/components/providers/finance-provider"
+import { CostProvider } from "@/components/providers/cost-provider"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ProfitLoss } from "@/components/reports/profit-loss"
 import { CashFlowChart } from "@/components/reports/cash-flow-chart"
@@ -21,7 +22,7 @@ import { MonthlyComparison } from "@/components/reports/monthly-comparison"
 import { cn } from "@/lib/utils"
 import type { DateRange } from "react-day-picker"
 
-export default function ReportsPage() {
+function ReportsContent() {
   const { data, isLoaded } = useFinance()
   const [dateRange, setDateRange] = useState<DateRange>({
     from: startOfMonth(subMonths(new Date(), 5)),
@@ -30,10 +31,8 @@ export default function ReportsPage() {
 
   const filteredTransactions = useMemo(() => {
     if (!dateRange.from || !dateRange.to) return data.transactions
-
     const fromStr = format(dateRange.from, "yyyy-MM-dd")
     const toStr = format(dateRange.to, "yyyy-MM-dd")
-
     return data.transactions.filter(t => t.date >= fromStr && t.date <= toStr)
   }, [data.transactions, dateRange])
 
@@ -49,7 +48,7 @@ export default function ReportsPage() {
           <div>
             <h2 className="text-2xl font-bold tracking-tight text-foreground">Reportes</h2>
             <p className="text-sm text-muted-foreground">
-              Analiza el desempeno financiero de tu negocio.
+              Analiza el desempeño financiero de tu negocio.
             </p>
           </div>
           <Popover>
@@ -58,9 +57,7 @@ export default function ReportsPage() {
                 <CalendarIcon className="mr-2 size-4" />
                 {dateRange.from ? (
                   dateRange.to ? (
-                    <>
-                      {format(dateRange.from, "dd/MM/yyyy")} - {format(dateRange.to, "dd/MM/yyyy")}
-                    </>
+                    <>{format(dateRange.from, "dd/MM/yyyy")} - {format(dateRange.to, "dd/MM/yyyy")}</>
                   ) : (
                     format(dateRange.from, "dd/MM/yyyy")
                   )
@@ -74,9 +71,7 @@ export default function ReportsPage() {
                 mode="range"
                 defaultMonth={dateRange.from}
                 selected={dateRange}
-                onSelect={(range) => {
-                  if (range) setDateRange(range)
-                }}
+                onSelect={(range) => { if (range) setDateRange(range) }}
                 numberOfMonths={2}
               />
             </PopoverContent>
@@ -95,7 +90,7 @@ export default function ReportsPage() {
         ) : (
           <div className="flex flex-col gap-6">
             <div className="grid gap-6 lg:grid-cols-2">
-              <ProfitLoss transactions={filteredTransactions} />
+              <ProfitLoss transactions={filteredTransactions} dateRange={effectiveRange} />
               <CashFlowChart transactions={filteredTransactions} dateRange={effectiveRange} />
             </div>
             <div className="grid gap-6 lg:grid-cols-2">
@@ -115,5 +110,13 @@ export default function ReportsPage() {
         )}
       </div>
     </AppShell>
+  )
+}
+
+export default function ReportsPage() {
+  return (
+    <CostProvider>
+      <ReportsContent />
+    </CostProvider>
   )
 }

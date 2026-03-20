@@ -54,4 +54,13 @@ export interface FinanceData {
   budgets: Budget[]
   categories: Category[]
   recurringExpenses: RecurringExpense[]
+
+}
+export interface Category {
+  id: string
+  businessId: string
+  name: string
+  type: TransactionType
+  color: string
+  expenseType?: "cogs" | "opex"
 }

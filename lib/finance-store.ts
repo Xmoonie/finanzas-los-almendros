@@ -102,6 +102,7 @@ export async function loadFinanceData(businessId: string): Promise<FinanceData> 
       name: c.name,
       type: c.type,
       color: c.color,
+      expenseType: c.expense_type ?? "opex",
     })) : [],
     recurringExpenses: (recurringExpenses.data || []).map(r => ({
       id: r.id,
@@ -242,6 +243,7 @@ export async function addCategory(data: FinanceData, category: Omit<Category, "i
     name: category.name,
     type: category.type,
     color: category.color,
+    expense_type: category.expenseType ?? "opex",
   }).select().single()
 
   if (!inserted) return data
