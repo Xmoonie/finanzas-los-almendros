@@ -10,7 +10,6 @@ import {
   BarChart3,
   Moon,
   Sun,
-  Scale,
   Repeat,
   Settings,
   ChefHat,
@@ -56,7 +55,6 @@ import { Label } from "@/components/ui/label"
 
 const navItems = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Balance", href: "/balance", icon: Scale },
   { label: "Ingresos", href: "/income", icon: TrendingUp },
   { label: "Gastos", href: "/expenses", icon: TrendingDown },
   { label: "Gastos Fijos", href: "/recurring", icon: Repeat },

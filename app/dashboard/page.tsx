@@ -8,8 +8,11 @@ import { RevenueChart } from "@/components/dashboard/revenue-chart"
 import { ExpenseChart } from "@/components/dashboard/expense-chart"
 import { RecentTransactions } from "@/components/dashboard/recent-transactions"
 import { MonthPicker, MonthFilterProvider } from "@/components/dashboard/month-filter"
+import { DailyAverages } from "@/components/balance/daily-averages"
+import { AnomalyAlerts } from "@/components/balance/anomaly-alerts"
 import { useFinance } from "@/components/providers/finance-provider"
 import { Skeleton } from "@/components/ui/skeleton"
+import type { BalancePeriod } from "@/lib/finance-store"
 
 function DashboardSkeleton() {
   return (
@@ -31,13 +34,13 @@ function DashboardSkeleton() {
 function DashboardContent() {
   const { isLoaded } = useFinance()
   const [selectedMonth, setSelectedMonth] = useState(() => format(new Date(), "yyyy-MM"))
+  const [averagesPeriod, setAveragesPeriod] = useState<BalancePeriod>("month")
 
   if (!isLoaded) return <DashboardSkeleton />
 
   return (
     <MonthFilterProvider selectedMonth={selectedMonth}>
       <div className="flex flex-col gap-6 p-6">
-        {/* Month filter row */}
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-sm font-semibold text-foreground">Resumen del período</h2>
@@ -49,6 +52,12 @@ function DashboardContent() {
         <div className="grid gap-6 lg:grid-cols-2">
           <RevenueChart />
           <ExpenseChart />
+        </div>
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <AnomalyAlerts />
+          </div>
+          <DailyAverages period={averagesPeriod} onPeriodChange={setAveragesPeriod} />
         </div>
         <RecentTransactions />
       </div>
