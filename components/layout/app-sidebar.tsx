@@ -17,6 +17,7 @@ import {
   Building2,
   ChevronDown,
   Plus,
+  BookOpen,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useState } from "react"
@@ -61,6 +62,7 @@ const navItems = [
   { label: "Presupuestos", href: "/budgets", icon: Wallet },
   { label: "Reportes", href: "/reports", icon: BarChart3 },
   { label: "Control de Costos", href: "/costos", icon: ChefHat },
+  { label: "Recetas", href: "/recetas", icon: BookOpen },
   { label: "Configuración", href: "/settings", icon: Settings },
 ]
 

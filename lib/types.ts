@@ -64,3 +64,30 @@ export interface Category {
   color: string
   expenseType?: "cogs" | "opex"
 }
+export type ComponentCategory = "proteina" | "arroz" | "ensalada" | "bastimento" | "extra"
+
+export interface RecipeComponent {
+  id: string
+  businessId: string
+  name: string
+  category: ComponentCategory
+  costPerPortion: number
+  wastePercentage: number
+  notes?: string
+}
+
+export interface RecipeItem {
+  id: string
+  recipeId: string
+  componentId: string
+  quantity: number
+}
+
+export interface Recipe {
+  id: string
+  businessId: string
+  name: string
+  basePrice: number
+  notes?: string
+  items: RecipeItem[]
+}
