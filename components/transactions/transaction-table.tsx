@@ -219,7 +219,7 @@ const availableYears = useMemo(() => getAvailableYears(data.transactions, type),
                     <ArrowUpDown className="ml-1 size-3" />
                   </Button>
                 </TableHead>
-                <TableHead>{type === "income" ? "Pagador" : "Beneficiario"}</TableHead>
+              
                 <TableHead className="text-right">
                   <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs" onClick={() => toggleSort("amount")}>
                     Monto

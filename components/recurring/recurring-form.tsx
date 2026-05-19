@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { format } from "date-fns"
-import { CalendarIcon } from "lucide-react"
+import { useEffect } from "react"
 
 import {
   Dialog,
@@ -31,23 +31,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import { Calendar } from "@/components/ui/calendar"
-import { cn } from "@/lib/utils"
 import { useFinance } from "@/components/providers/finance-provider"
 import type { RecurringExpense, RecurringFrequency } from "@/lib/types"
 
 const formSchema = z.object({
   amount: z.coerce.number().positive("El monto debe ser mayor a 0"),
   category: z.string().min(1, "Selecciona una categoria"),
+  subcategoryId: z.string().optional(),
   description: z.string().min(1, "Ingresa una descripcion"),
-  payee: z.string().min(1, "Ingresa un beneficiario"),
   frequency: z.enum(["weekly", "biweekly", "monthly", "yearly"] as const),
-  startDate: z.date({ required_error: "Selecciona una fecha de inicio" }),
+  dayOfMonth: z.coerce.number().min(1).max(31).optional(),
 })
 
 type FormValues = z.infer<typeof formSchema>
@@ -75,42 +68,60 @@ export function RecurringForm({ open, onOpenChange, expense }: RecurringFormProp
       ? {
           amount: expense.amount,
           category: expense.category,
+          subcategoryId: expense.subcategoryId ?? "",
           description: expense.description,
-          payee: expense.payee,
           frequency: expense.frequency,
-          startDate: new Date(expense.startDate),
+          dayOfMonth: expense.dayOfMonth ?? undefined,
         }
       : {
           amount: 0,
           category: "",
+          subcategoryId: "",
           description: "",
-          payee: "",
           frequency: "monthly" as RecurringFrequency,
-          startDate: new Date(),
+          dayOfMonth: undefined,
         },
   })
 
+  const selectedCategory = form.watch("category")
+  const selectedFrequency = form.watch("frequency")
+
+  const subcategories = data.subcategories.filter(
+    s => s.categoryName === selectedCategory
+  )
+
+  // Reset subcategoría cuando cambia categoría
+  useEffect(() => {
+    if (!expense) form.setValue("subcategoryId", "")
+  }, [selectedCategory, expense, form])
+
   function onSubmit(values: FormValues) {
-  const recData = {
-    businessId: activeBusiness?.id ?? "",
-    category: values.category,
-    description: values.description,
-    payee: values.payee,
-    amount: values.amount,
-    frequency: values.frequency,
-    startDate: format(values.startDate, "yyyy-MM-dd"),
-    active: true,
-  }
+    const selectedSub = values.subcategoryId
+      ? data.subcategories.find(s => s.id === values.subcategoryId)
+      : undefined
 
-  if (expense) {
-    updateRecurringExpense({ ...recData, id: expense.id, active: expense.active })
-  } else {
-    addRecurringExpense(recData)
-  }
+    const recData = {
+      businessId: activeBusiness?.id ?? "",
+      category: values.category,
+      description: values.description,
+      amount: values.amount,
+      frequency: values.frequency,
+      startDate: format(new Date(), "yyyy-MM-dd"),
+      active: true,
+      subcategoryId: selectedSub?.id ?? undefined,
+      subcategoryName: selectedSub?.name ?? undefined,
+      dayOfMonth: values.dayOfMonth ?? undefined,
+    }
 
-  form.reset()
-  onOpenChange(false)
-}
+    if (expense) {
+      updateRecurringExpense({ ...recData, id: expense.id, active: expense.active })
+    } else {
+      addRecurringExpense(recData)
+    }
+
+    form.reset()
+    onOpenChange(false)
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -120,11 +131,30 @@ export function RecurringForm({ open, onOpenChange, expense }: RecurringFormProp
             {expense ? "Editar" : "Agregar"} Gasto Fijo
           </DialogTitle>
           <DialogDescription>
-            {expense ? "Modifica los datos del gasto recurrente." : "Registra un nuevo gasto fijo recurrente."}
+            {expense
+              ? "Modifica los datos del gasto recurrente."
+              : "Registra un nuevo gasto fijo recurrente."}
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4">
+
+            {/* Descripción */}
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Descripcion</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Ej: Renta local, Planilla, Agua..." {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Monto */}
             <FormField
               control={form.control}
               name="amount"
@@ -138,13 +168,75 @@ export function RecurringForm({ open, onOpenChange, expense }: RecurringFormProp
                 </FormItem>
               )}
             />
+
+            {/* Categoría */}
+            <FormField
+              control={form.control}
+              name="category"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Categoria</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecciona una categoria" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {expenseCategories.map((cat) => (
+                        <SelectItem key={cat.id} value={cat.name}>
+                          {cat.name}
+                          {cat.expenseType && (
+                            <span className="ml-2 text-xs text-muted-foreground uppercase">
+                              {cat.expenseType}
+                            </span>
+                          )}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Subcategoría */}
+            {selectedCategory && subcategories.length > 0 && (
+              <FormField
+                control={form.control}
+                name="subcategoryId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Subcategoria</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecciona una subcategoria" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="">— Ninguna —</SelectItem>
+                        {subcategories.map((sub) => (
+                          <SelectItem key={sub.id} value={sub.id}>
+                            {sub.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
+            {/* Frecuencia */}
             <FormField
               control={form.control}
               name="frequency"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Frecuencia</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Selecciona frecuencia" />
@@ -162,92 +254,31 @@ export function RecurringForm({ open, onOpenChange, expense }: RecurringFormProp
                 </FormItem>
               )}
             />
-            <FormField
-              control={form.control}
-              name="category"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Categoria</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+
+            {/* Día del mes — solo si frecuencia es mensual */}
+            {selectedFrequency === "monthly" && (
+              <FormField
+                control={form.control}
+                name="dayOfMonth"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Día del mes para registrar</FormLabel>
                     <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecciona una categoria" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {expenseCategories.map((cat) => (
-                        <SelectItem key={cat.id} value={cat.name}>
-                          {cat.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Descripcion</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Describe el gasto fijo" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="payee"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Beneficiario</FormLabel>
-                  <FormControl>
-                    <Input placeholder="A quien se paga" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="startDate"
-              render={({ field }) => (
-                <FormItem className="flex flex-col">
-                  <FormLabel>Fecha de Inicio</FormLabel>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <FormControl>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full pl-3 text-left font-normal",
-                            !field.value && "text-muted-foreground"
-                          )}
-                        >
-                          {field.value
-                            ? format(field.value, "dd/MM/yyyy")
-                            : "Selecciona fecha"}
-                          <CalendarIcon className="ml-auto size-4 opacity-50" />
-                        </Button>
-                      </FormControl>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={field.value}
-                        onSelect={field.onChange}
-                        initialFocus
+                      <Input
+                        type="number"
+                        min={1}
+                        max={31}
+                        placeholder="Ej: 1, 15, 30"
+                        {...field}
+                        value={field.value ?? ""}
                       />
-                    </PopoverContent>
-                  </Popover>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancelar

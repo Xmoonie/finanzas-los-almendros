@@ -28,6 +28,7 @@ function ReportsContent() {
     from: startOfMonth(subMonths(new Date(), 5)),
     to: endOfMonth(new Date()),
   })
+  const [viewMode, setViewMode] = useState<"simple" | "detailed">("simple")
 
   const filteredTransactions = useMemo(() => {
     if (!dateRange.from || !dateRange.to) return data.transactions
@@ -53,11 +54,14 @@ function ReportsContent() {
           </div>
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" className={cn("w-[280px] justify-start text-left font-normal", !dateRange.from && "text-muted-foreground")}>
+              <Button
+                variant="outline"
+                className={cn("w-[280px] justify-start text-left font-normal", !dateRange.from && "text-muted-foreground")}
+              >
                 <CalendarIcon className="mr-2 size-4" />
                 {dateRange.from ? (
                   dateRange.to ? (
-                    <>{format(dateRange.from, "dd/MM/yyyy")} - {format(dateRange.to, "dd/MM/yyyy")}</>
+                    <>{format(dateRange.from, "dd/MM/yyyy")} — {format(dateRange.to, "dd/MM/yyyy")}</>
                   ) : (
                     format(dateRange.from, "dd/MM/yyyy")
                   )
@@ -90,7 +94,12 @@ function ReportsContent() {
         ) : (
           <div className="flex flex-col gap-6">
             <div className="grid gap-6 lg:grid-cols-2">
-              <ProfitLoss transactions={filteredTransactions} dateRange={effectiveRange} />
+              <ProfitLoss
+                transactions={filteredTransactions}
+                dateRange={effectiveRange}
+                viewMode={viewMode}
+                onToggleView={() => setViewMode(v => v === "simple" ? "detailed" : "simple")}
+              />
               <CashFlowChart transactions={filteredTransactions} dateRange={effectiveRange} />
             </div>
             <div className="grid gap-6 lg:grid-cols-2">

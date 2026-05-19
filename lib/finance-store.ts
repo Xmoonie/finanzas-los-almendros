@@ -1,5 +1,9 @@
 import { createClient } from "@/lib/supabase"
-import type { Transaction, Budget, Category, FinanceData, RecurringExpense, TransactionType, Business } from "./types"
+import type {
+  Transaction, Budget, Category, FinanceData,
+  RecurringExpense, TransactionType, Business,
+  Subcategory, ExpenseMemory
+} from "./types"
 
 const supabase = createClient()
 
@@ -8,14 +12,14 @@ export const DEFAULT_CATEGORIES = (businessId: string): Omit<Category, "id">[] =
   { businessId, name: "Servicios", type: "income", color: "#0ea5e9" },
   { businessId, name: "Consultorias", type: "income", color: "#8b5cf6" },
   { businessId, name: "Otros Ingresos", type: "income", color: "#64748b" },
-  { businessId, name: "Alquiler", type: "expense", color: "#ef4444" },
-  { businessId, name: "Servicios Publicos", type: "expense", color: "#f97316" },
-  { businessId, name: "Planilla", type: "expense", color: "#eab308" },
-  { businessId, name: "Suministros", type: "expense", color: "#84cc16" },
-  { businessId, name: "Marketing", type: "expense", color: "#06b6d4" },
-  { businessId, name: "Transporte", type: "expense", color: "#a855f7" },
-  { businessId, name: "Mantenimiento", type: "expense", color: "#ec4899" },
-  { businessId, name: "Otros Gastos", type: "expense", color: "#6b7280" },
+  { businessId, name: "Alquiler", type: "expense", color: "#ef4444", expenseType: "opex" },
+  { businessId, name: "Servicios Publicos", type: "expense", color: "#f97316", expenseType: "opex" },
+  { businessId, name: "Planilla", type: "expense", color: "#eab308", expenseType: "opex" },
+  { businessId, name: "Suministros", type: "expense", color: "#84cc16", expenseType: "cogs" },
+  { businessId, name: "Marketing", type: "expense", color: "#06b6d4", expenseType: "opex" },
+  { businessId, name: "Transporte", type: "expense", color: "#a855f7", expenseType: "opex" },
+  { businessId, name: "Mantenimiento", type: "expense", color: "#ec4899", expenseType: "opex" },
+  { businessId, name: "Otros Gastos", type: "expense", color: "#6b7280", expenseType: "opex" },
 ]
 
 // ─── Businesses ───────────────────────────────────────────────────────────────
@@ -50,10 +54,16 @@ export async function createBusiness(name: string, currency = "HNL"): Promise<Bu
 
   if (!data) return null
 
-  // Crear categorías default para el nuevo negocio
   const cats = DEFAULT_CATEGORIES(data.id)
   await supabase.from("categories").insert(
-    cats.map(c => ({ business_id: data.id, user_id: user.id, name: c.name, type: c.type, color: c.color }))
+    cats.map(c => ({
+      business_id: data.id,
+      user_id: user.id,
+      name: c.name,
+      type: c.type,
+      color: c.color,
+      expense_type: c.expenseType ?? null,
+    }))
   )
 
   return {
@@ -69,13 +79,15 @@ export async function createBusiness(name: string, currency = "HNL"): Promise<Bu
 
 export async function loadFinanceData(businessId: string): Promise<FinanceData> {
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { transactions: [], budgets: [], categories: [], recurringExpenses: [] }
+  if (!user) return { transactions: [], budgets: [], categories: [], recurringExpenses: [], subcategories: [], expenseMemory: [] }
 
-  const [transactions, budgets, categories, recurringExpenses] = await Promise.all([
+  const [transactions, budgets, categories, recurringExpenses, subcategories, expenseMemory] = await Promise.all([
     supabase.from("transactions").select("*").eq("business_id", businessId).order("date", { ascending: false }),
     supabase.from("budgets").select("*").eq("business_id", businessId),
     supabase.from("categories").select("*").eq("business_id", businessId),
     supabase.from("recurring_expenses").select("*").eq("business_id", businessId),
+    supabase.from("subcategories").select("*").eq("business_id", businessId).order("name"),
+    supabase.from("expense_memory").select("*").eq("business_id", businessId),
   ])
 
   return {
@@ -85,9 +97,12 @@ export async function loadFinanceData(businessId: string): Promise<FinanceData> 
       type: t.type,
       amount: t.amount,
       category: t.category,
-      description: t.description,
+      description: t.description ?? undefined,
+      notes: t.notes ?? undefined,
       date: t.date,
       payee: t.payee,
+      subcategoryId: t.subcategory_id ?? undefined,
+      subcategoryName: t.subcategory_name ?? undefined,
     })),
     budgets: (budgets.data || []).map(b => ({
       id: b.id,
@@ -96,14 +111,14 @@ export async function loadFinanceData(businessId: string): Promise<FinanceData> 
       monthlyLimit: b.monthly_limit,
       month: b.month,
     })),
-    categories: categories.data?.length ? categories.data.map(c => ({
+    categories: (categories.data || []).map(c => ({
       id: c.id,
       businessId: c.business_id,
       name: c.name,
       type: c.type,
       color: c.color,
-      expenseType: c.expense_type ?? "opex",
-    })) : [],
+      expenseType: c.expense_type ?? undefined,
+    })),
     recurringExpenses: (recurringExpenses.data || []).map(r => ({
       id: r.id,
       businessId: r.business_id,
@@ -114,9 +129,30 @@ export async function loadFinanceData(businessId: string): Promise<FinanceData> 
       frequency: r.frequency,
       startDate: r.start_date,
       active: r.active,
+      subcategoryId: r.subcategory_id ?? undefined,
+      subcategoryName: r.subcategory_name ?? undefined,
+      dayOfMonth: r.day_of_month ?? undefined,
+    })),
+    subcategories: (subcategories.data || []).map(s => ({
+      id: s.id,
+      businessId: s.business_id,
+      categoryName: s.category_name,
+      expenseType: s.expense_type,
+      name: s.name,
+    })),
+    expenseMemory: (expenseMemory.data || []).map(m => ({
+      id: m.id,
+      businessId: m.business_id,
+      description: m.description,
+      categoryName: m.category_name,
+      expenseType: m.expense_type,
+      subcategoryId: m.subcategory_id ?? undefined,
+      subcategoryName: m.subcategory_name ?? undefined,
     })),
   }
 }
+
+// ─── Transactions ─────────────────────────────────────────────────────────────
 
 export async function addTransaction(data: FinanceData, transaction: Omit<Transaction, "id">): Promise<FinanceData> {
   const { data: { user } } = await supabase.auth.getUser()
@@ -128,13 +164,32 @@ export async function addTransaction(data: FinanceData, transaction: Omit<Transa
     type: transaction.type,
     amount: transaction.amount,
     category: transaction.category,
-    description: transaction.description,
+    notes: transaction.notes ?? null,
     date: transaction.date,
-    payee: transaction.payee,
+    payee: transaction.payee ?? null,
+    subcategory_id: transaction.subcategoryId ?? null,
+    subcategory_name: transaction.subcategoryName ?? null,
   }).select().single()
 
   if (!inserted) return data
-  return { ...data, transactions: [{ ...transaction, id: inserted.id }, ...data.transactions] }
+
+  // Guardar en expense_memory si es gasto
+  if (transaction.type === "expense" && transaction.subcategoryId) {
+    const cat = data.categories.find(c => c.name === transaction.category)
+    await supabase.from("expense_memory").upsert({
+      business_id: transaction.businessId,
+      description: transaction.subcategoryId,
+      category_name: transaction.category,
+      expense_type: cat?.expenseType ?? "opex",
+      subcategory_id: transaction.subcategoryId ?? null,
+      subcategory_name: transaction.subcategoryName ?? null,
+    }, { onConflict: "business_id,description" })
+  }
+
+  return {
+    ...data,
+    transactions: [{ ...transaction, id: inserted.id }, ...data.transactions],
+  }
 }
 
 export async function updateTransaction(data: FinanceData, transaction: Transaction): Promise<FinanceData> {
@@ -142,9 +197,11 @@ export async function updateTransaction(data: FinanceData, transaction: Transact
     type: transaction.type,
     amount: transaction.amount,
     category: transaction.category,
-    description: transaction.description,
+    notes: transaction.notes ?? null,
     date: transaction.date,
-    payee: transaction.payee,
+    payee: transaction.payee ?? null,
+    subcategory_id: transaction.subcategoryId ?? null,
+    subcategory_name: transaction.subcategoryName ?? null,
   }).eq("id", transaction.id)
 
   return { ...data, transactions: data.transactions.map(t => t.id === transaction.id ? transaction : t) }
@@ -154,6 +211,8 @@ export async function deleteTransaction(data: FinanceData, id: string): Promise<
   await supabase.from("transactions").delete().eq("id", id)
   return { ...data, transactions: data.transactions.filter(t => t.id !== id) }
 }
+
+// ─── Budgets ──────────────────────────────────────────────────────────────────
 
 export async function addBudget(data: FinanceData, budget: Omit<Budget, "id">): Promise<FinanceData> {
   const { data: { user } } = await supabase.auth.getUser()
@@ -186,6 +245,8 @@ export async function deleteBudget(data: FinanceData, id: string): Promise<Finan
   return { ...data, budgets: data.budgets.filter(b => b.id !== id) }
 }
 
+// ─── Recurring Expenses ───────────────────────────────────────────────────────
+
 export async function addRecurringExpense(data: FinanceData, expense: Omit<RecurringExpense, "id">): Promise<FinanceData> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return data
@@ -195,11 +256,14 @@ export async function addRecurringExpense(data: FinanceData, expense: Omit<Recur
     business_id: expense.businessId,
     category: expense.category,
     description: expense.description,
-    payee: expense.payee,
+    payee: expense.payee ?? null,
     amount: expense.amount,
     frequency: expense.frequency,
     start_date: expense.startDate,
     active: expense.active,
+    subcategory_id: expense.subcategoryId ?? null,
+    subcategory_name: expense.subcategoryName ?? null,
+    day_of_month: expense.dayOfMonth ?? null,
   }).select().single()
 
   if (!inserted) return data
@@ -210,11 +274,14 @@ export async function updateRecurringExpense(data: FinanceData, expense: Recurri
   await supabase.from("recurring_expenses").update({
     category: expense.category,
     description: expense.description,
-    payee: expense.payee,
+    payee: expense.payee ?? null,
     amount: expense.amount,
     frequency: expense.frequency,
     start_date: expense.startDate,
     active: expense.active,
+    subcategory_id: expense.subcategoryId ?? null,
+    subcategory_name: expense.subcategoryName ?? null,
+    day_of_month: expense.dayOfMonth ?? null,
   }).eq("id", expense.id)
 
   return { ...data, recurringExpenses: data.recurringExpenses.map(r => r.id === expense.id ? expense : r) }
@@ -233,6 +300,8 @@ export async function toggleRecurringExpense(data: FinanceData, id: string): Pro
   return { ...data, recurringExpenses: data.recurringExpenses.map(r => r.id === id ? { ...r, active: !r.active } : r) }
 }
 
+// ─── Categories ───────────────────────────────────────────────────────────────
+
 export async function addCategory(data: FinanceData, category: Omit<Category, "id">): Promise<FinanceData> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return data
@@ -243,7 +312,7 @@ export async function addCategory(data: FinanceData, category: Omit<Category, "i
     name: category.name,
     type: category.type,
     color: category.color,
-    expense_type: category.expenseType ?? "opex",
+    expense_type: category.expenseType ?? null,
   }).select().single()
 
   if (!inserted) return data
@@ -253,6 +322,78 @@ export async function addCategory(data: FinanceData, category: Omit<Category, "i
 export async function deleteCategory(data: FinanceData, id: string): Promise<FinanceData> {
   await supabase.from("categories").delete().eq("id", id)
   return { ...data, categories: data.categories.filter(c => c.id !== id) }
+}
+
+// ─── Subcategories ────────────────────────────────────────────────────────────
+
+export async function addSubcategory(data: FinanceData, subcategory: Omit<Subcategory, "id">): Promise<FinanceData> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return data
+
+  const { data: inserted } = await supabase.from("subcategories").insert({
+    business_id: subcategory.businessId,
+    category_name: subcategory.categoryName,
+    expense_type: subcategory.expenseType,
+    name: subcategory.name,
+  }).select().single()
+
+  if (!inserted) return data
+  return { ...data, subcategories: [...data.subcategories, { ...subcategory, id: inserted.id }] }
+}
+
+export async function deleteSubcategory(data: FinanceData, id: string): Promise<FinanceData> {
+  await supabase.from("subcategories").delete().eq("id", id)
+  return { ...data, subcategories: data.subcategories.filter(s => s.id !== id) }
+}
+
+// ─── Auto-post recurring expenses ────────────────────────────────────────────
+
+export async function autoPostRecurringExpenses(data: FinanceData, businessId: string): Promise<FinanceData> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return data
+
+  const now = new Date()
+  const currentMonth = now.getMonth()
+  const currentYear = now.getFullYear()
+  const today = now.getDate()
+
+  let updatedData = { ...data }
+
+  for (const expense of data.recurringExpenses) {
+    if (!expense.active || !expense.dayOfMonth) continue
+
+    // Solo postear si hoy >= día configurado
+    if (today < expense.dayOfMonth) continue
+
+    const postDate = new Date(currentYear, currentMonth, expense.dayOfMonth)
+    const dateStr = postDate.toISOString().split("T")[0]
+
+    // Verificar si ya existe una transacción para este gasto en este mes
+    const alreadyPosted = data.transactions.some(
+      t =>
+        t.subcategoryId === expense.subcategoryId &&
+        t.amount === expense.amount &&
+        t.date.startsWith(`${currentYear}-${String(currentMonth + 1).padStart(2, "0")}`)
+    )
+
+    if (alreadyPosted) continue
+
+  const newTx: Omit<Transaction, "id"> = {
+      businessId,
+      type: "expense",
+      amount: expense.amount,
+      category: expense.category,
+      date: dateStr,
+      subcategoryId: expense.subcategoryId,
+      subcategoryName: expense.subcategoryName,
+      notes: "",
+    }
+
+    updatedData = await addTransaction(updatedData, newTx)
+    
+  }
+
+  return updatedData
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 export type TransactionType = "income" | "expense"
+export type ExpenseType = "cogs" | "opex"
 
 export interface Business {
   id: string
@@ -8,15 +9,44 @@ export interface Business {
   createdAt: string
 }
 
+export interface Category {
+  id: string
+  businessId: string
+  name: string
+  type: TransactionType
+  color: string
+  expenseType?: ExpenseType
+}
+
+export interface Subcategory {
+  id: string
+  businessId: string
+  categoryName: string
+  expenseType: ExpenseType
+  name: string
+}
+
+export interface ExpenseMemory {
+  id: string
+  businessId: string
+  description?: string
+  categoryName: string
+  expenseType: ExpenseType
+  subcategoryId?: string
+  subcategoryName?: string
+}
+
 export interface Transaction {
   id: string
   businessId: string
   type: TransactionType
   amount: number
   category: string
-  description: string
+  notes?: string
   date: string
-  payee: string
+  payee?: string
+  subcategoryId?: string
+  subcategoryName?: string
 }
 
 export interface Budget {
@@ -27,26 +57,22 @@ export interface Budget {
   month: string
 }
 
-export interface Category {
-  id: string
-  businessId: string
-  name: string
-  type: TransactionType
-  color: string
-}
-
 export type RecurringFrequency = "weekly" | "biweekly" | "monthly" | "yearly"
 
 export interface RecurringExpense {
   id: string
   businessId: string
   category: string
-  description: string
-  payee: string
+  description?: string
+  notes?: string
+  payee?: string
   amount: number
   frequency: RecurringFrequency
   startDate: string
   active: boolean
+  subcategoryId?: string
+  subcategoryName?: string
+  dayOfMonth?: number
 }
 
 export interface FinanceData {
@@ -54,16 +80,10 @@ export interface FinanceData {
   budgets: Budget[]
   categories: Category[]
   recurringExpenses: RecurringExpense[]
+  subcategories: Subcategory[]
+  expenseMemory: ExpenseMemory[]
+}
 
-}
-export interface Category {
-  id: string
-  businessId: string
-  name: string
-  type: TransactionType
-  color: string
-  expenseType?: "cogs" | "opex"
-}
 export type ComponentCategory = "proteina" | "arroz" | "ensalada" | "bastimento" | "extra"
 
 export interface RecipeComponent {

@@ -1,7 +1,7 @@
 "use client"
 
 import React, { createContext, useContext, useState, useEffect } from "react"
-import type { FinanceData, Transaction, Budget, RecurringExpense, Category, Business } from "@/lib/types"
+import type { FinanceData, Transaction, Budget, RecurringExpense, Category, Business, Subcategory } from "@/lib/types"
 import {
   loadFinanceData,
   loadBusinesses,
@@ -18,6 +18,9 @@ import {
   toggleRecurringExpense as toggleRec,
   addCategory as addCat,
   deleteCategory as deleteCat,
+  addSubcategory as addSub,
+  deleteSubcategory as deleteSub,
+  autoPostRecurringExpenses,
 } from "@/lib/finance-store"
 
 interface FinanceContextValue {
@@ -39,6 +42,8 @@ interface FinanceContextValue {
   toggleRecurringExpense: (id: string) => Promise<void>
   addCategory: (category: Omit<Category, "id">) => Promise<void>
   deleteCategory: (id: string) => Promise<void>
+  addSubcategory: (subcategory: Omit<Subcategory, "id">) => Promise<void>
+  deleteSubcategory: (id: string) => Promise<void>
 }
 
 const FinanceContext = createContext<FinanceContextValue | null>(null)
@@ -54,6 +59,8 @@ const EMPTY: FinanceData = {
   budgets: [],
   categories: [],
   recurringExpenses: [],
+  subcategories: [],
+  expenseMemory: [],
 }
 
 export function FinanceProvider({ children }: { children: React.ReactNode }) {
@@ -74,12 +81,14 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     })
   }, [])
 
-  // Cargar datos cuando cambia el negocio activo
+  // Cargar datos cuando cambia el negocio activo + auto-post gastos fijos
   useEffect(() => {
     if (!activeBusiness) return
     setIsLoaded(false)
-    loadFinanceData(activeBusiness.id).then(loaded => {
-      setData(loaded)
+    loadFinanceData(activeBusiness.id).then(async loaded => {
+      // Auto-postear gastos fijos recurrentes con dayOfMonth configurado
+      const withAutoPost = await autoPostRecurringExpenses(loaded, activeBusiness.id)
+      setData(withAutoPost)
       setIsLoaded(true)
     }).catch(() => {
       setData(EMPTY)
@@ -161,6 +170,16 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     setData(updated)
   }
 
+  const handleAddSubcategory = async (subcategory: Omit<Subcategory, "id">) => {
+    const updated = await addSub(data, subcategory)
+    setData(updated)
+  }
+
+  const handleDeleteSubcategory = async (id: string) => {
+    const updated = await deleteSub(data, id)
+    setData(updated)
+  }
+
   return (
     <FinanceContext.Provider
       value={{
@@ -182,6 +201,8 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         toggleRecurringExpense: handleToggleRecurringExpense,
         addCategory: handleAddCategory,
         deleteCategory: handleDeleteCategory,
+        addSubcategory: handleAddSubcategory,
+        deleteSubcategory: handleDeleteSubcategory,
       }}
     >
       {children}
