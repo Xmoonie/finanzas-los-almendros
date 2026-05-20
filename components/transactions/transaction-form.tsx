@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { format } from "date-fns"
 import { CalendarIcon } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 
 import {
   Dialog,
@@ -72,7 +72,7 @@ export function TransactionForm({ open, onOpenChange, type, transaction }: Trans
           amount: transaction.amount,
           category: transaction.category,
           subcategoryId: transaction.subcategoryId ?? "",
-          description: transaction.description,
+          notes: transaction.notes ?? "",
           payee: transaction.payee ?? "",
           date: new Date(transaction.date),
         }
@@ -87,28 +87,10 @@ export function TransactionForm({ open, onOpenChange, type, transaction }: Trans
   })
 
   const selectedCategory = form.watch("category")
-  const descriptionValue = form.watch("description")
 
-  // Subcategorías filtradas por categoría seleccionada
   const subcategories = data.subcategories.filter(
     s => s.categoryName === selectedCategory
   )
-
-  // Autocomplete: cuando cambia la descripción, buscar en expense_memory
-  useEffect(() => {
-    if (!isExpense || !descriptionValue || transaction) return
-
-    const match = data.expenseMemory.find(
-      m => m.description === descriptionValue.toLowerCase().trim()
-    )
-
-    if (match) {
-      form.setValue("category", match.categoryName)
-      if (match.subcategoryId) {
-        form.setValue("subcategoryId", match.subcategoryId)
-      }
-    }
-  }, [descriptionValue, data.expenseMemory, isExpense, transaction, form])
 
   // Reset subcategoría cuando cambia la categoría
   useEffect(() => {
@@ -118,7 +100,7 @@ export function TransactionForm({ open, onOpenChange, type, transaction }: Trans
   }, [selectedCategory, transaction, form])
 
   function onSubmit(values: FormValues) {
-    const selectedSub = values.subcategoryId
+    const selectedSub = values.subcategoryId !== "none"
       ? data.subcategories.find(s => s.id === values.subcategoryId)
       : undefined
 
@@ -175,21 +157,6 @@ export function TransactionForm({ open, onOpenChange, type, transaction }: Trans
               )}
             />
 
-            {/* Descripción — va primero en gastos para triggear autocomplete */}
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Descripcion</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Describe la transaccion" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
             {/* Categoría */}
             <FormField
               control={form.control}
@@ -221,7 +188,7 @@ export function TransactionForm({ open, onOpenChange, type, transaction }: Trans
               )}
             />
 
-            {/* Subcategoría — solo si hay subcategorías para la categoría seleccionada */}
+            {/* Subcategoría */}
             {isExpense && selectedCategory && subcategories.length > 0 && (
               <FormField
                 control={form.control}
@@ -236,7 +203,7 @@ export function TransactionForm({ open, onOpenChange, type, transaction }: Trans
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="">— Ninguna —</SelectItem>
+                        <SelectItem value="none">— Ninguna —</SelectItem>
                         {subcategories.map((sub) => (
                           <SelectItem key={sub.id} value={sub.id}>
                             {sub.name}
@@ -249,7 +216,8 @@ export function TransactionForm({ open, onOpenChange, type, transaction }: Trans
                 )}
               />
             )}
-{/* Notas */}
+
+            {/* Notas */}
             <FormField
               control={form.control}
               name="notes"
@@ -263,6 +231,7 @@ export function TransactionForm({ open, onOpenChange, type, transaction }: Trans
                 </FormItem>
               )}
             />
+
             {/* Pagador — solo en ingresos */}
             {!isExpense && (
               <FormField

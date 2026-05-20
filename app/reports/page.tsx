@@ -28,7 +28,6 @@ function ReportsContent() {
     from: startOfMonth(subMonths(new Date(), 5)),
     to: endOfMonth(new Date()),
   })
-  const [viewMode, setViewMode] = useState<"simple" | "detailed">("simple")
 
   const filteredTransactions = useMemo(() => {
     if (!dateRange.from || !dateRange.to) return data.transactions
@@ -97,8 +96,6 @@ function ReportsContent() {
               <ProfitLoss
                 transactions={filteredTransactions}
                 dateRange={effectiveRange}
-                viewMode={viewMode}
-                onToggleView={() => setViewMode(v => v === "simple" ? "detailed" : "simple")}
               />
               <CashFlowChart transactions={filteredTransactions} dateRange={effectiveRange} />
             </div>
