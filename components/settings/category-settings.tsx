@@ -1,12 +1,20 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, Trash2, Tag, ChevronDown, ChevronRight } from "lucide-react"
+import { Plus, Trash2, Tag, ChevronDown, ChevronRight, Pencil } from "lucide-react"
 import { useFinance } from "@/components/providers/finance-provider"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,7 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import type { TransactionType } from "@/lib/types"
+import type { TransactionType, Category } from "@/lib/types"
 
 const PRESET_COLORS = [
   "#0d9488", "#0ea5e9", "#8b5cf6", "#64748b",
@@ -114,6 +122,114 @@ function AddCategoryForm({ type, onAdd }: AddCategoryFormProps) {
   )
 }
 
+// ─── Edit Category Dialog ─────────────────────────────────────────────────────
+
+interface EditCategoryDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  category: Category
+}
+
+function EditCategoryDialog({ open, onOpenChange, category }: EditCategoryDialogProps) {
+  const { updateCategory } = useFinance()
+  const [name, setName] = useState(category.name)
+  const [color, setColor] = useState(category.color)
+  const [expenseType, setExpenseType] = useState<"cogs" | "opex">(category.expenseType ?? "opex")
+  const [error, setError] = useState("")
+
+  // Resetear valores cada vez que se abre el modal (por si se editó otra categoría antes)
+  const handleOpenChange = (isOpen: boolean) => {
+    if (isOpen) {
+      setName(category.name)
+      setColor(category.color)
+      setExpenseType(category.expenseType ?? "opex")
+      setError("")
+    }
+    onOpenChange(isOpen)
+  }
+
+  const handleSave = () => {
+    const trimmed = name.trim()
+    if (!trimmed) { setError("El nombre no puede estar vacío"); return }
+
+    updateCategory({
+      ...category,
+      name: trimmed,
+      color,
+      expenseType: category.type === "expense" ? expenseType : category.expenseType,
+    })
+    onOpenChange(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-[400px]">
+        <DialogHeader>
+          <DialogTitle>Editar Categoría</DialogTitle>
+          <DialogDescription>
+            Los cambios se reflejarán en todas las transacciones, subcategorías y gastos fijos que ya usan esta categoría.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-4">
+          <div>
+            <Label className="text-xs mb-1 block">Nombre</Label>
+            <Input
+              value={name}
+              onChange={e => { setName(e.target.value); setError("") }}
+              onKeyDown={e => e.key === "Enter" && handleSave()}
+            />
+            {error && <p className="text-xs text-destructive mt-1">{error}</p>}
+          </div>
+
+          {category.type === "expense" && (
+            <div>
+              <Label className="text-xs mb-1 block">Tipo</Label>
+              <Select value={expenseType} onValueChange={v => setExpenseType(v as "cogs" | "opex")}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cogs">COGS</SelectItem>
+                  <SelectItem value="opex">Operativo</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          <div>
+            <Label className="text-xs mb-1 block">Color</Label>
+            <div className="flex gap-1 flex-wrap">
+              {PRESET_COLORS.map(c => (
+                <button
+                  key={c}
+                  type="button"
+                  className="size-6 rounded-full border-2 transition-transform hover:scale-110"
+                  style={{
+                    backgroundColor: c,
+                    borderColor: color === c ? "white" : "transparent",
+                    outline: color === c ? `2px solid ${c}` : "none",
+                  }}
+                  onClick={() => setColor(c)}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button type="button" onClick={handleSave}>
+            Guardar Cambios
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ─── Add Subcategory Form ─────────────────────────────────────────────────────
 
 interface AddSubcategoryFormProps {
@@ -162,22 +278,33 @@ interface CategoryRowProps {
   catColor: string
   expenseType?: "cogs" | "opex"
   type: TransactionType
+  businessId: string
 }
 
-function CategoryRow({ catId, catName, catColor, expenseType, type }: CategoryRowProps) {
-  const { data, deleteCategory, addSubcategory, deleteSubcategory, activeBusiness } = useFinance()
+function CategoryRow({ catId, catName, catColor, expenseType, type, businessId }: CategoryRowProps) {
+  const { data, deleteCategory, addSubcategory, deleteSubcategory } = useFinance()
   const [expanded, setExpanded] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
 
   const subcategories = data.subcategories.filter(s => s.categoryName === catName)
 
   const handleAddSubcategory = (name: string) => {
     if (!expenseType) return
     addSubcategory({
-      businessId: activeBusiness?.id ?? "",
+      businessId,
       categoryName: catName,
       expenseType,
       name,
     })
+  }
+
+  const categoryForEdit: Category = {
+    id: catId,
+    businessId,
+    name: catName,
+    type,
+    color: catColor,
+    expenseType,
   }
 
   return (
@@ -217,34 +344,46 @@ function CategoryRow({ catId, catName, catColor, expenseType, type }: CategoryRo
             </span>
           )}
         </div>
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-            >
-              <Trash2 className="size-3.5" />
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>¿Eliminar categoría?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Se eliminará <strong>{catName}</strong> y todas sus subcategorías. Las transacciones existentes no serán afectadas.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              <AlertDialogAction
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                onClick={() => deleteCategory(catId)}
+
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 text-muted-foreground hover:text-foreground"
+            onClick={() => setEditOpen(true)}
+          >
+            <Pencil className="size-3.5" />
+          </Button>
+
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
               >
-                Eliminar
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+                <Trash2 className="size-3.5" />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>¿Eliminar categoría?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Se eliminará <strong>{catName}</strong> y todas sus subcategorías. Las transacciones existentes no serán afectadas.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={() => deleteCategory(catId)}
+                >
+                  Eliminar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
       </div>
 
       {/* Panel de subcategorías (solo gastos) */}
@@ -299,6 +438,12 @@ function CategoryRow({ catId, catName, catColor, expenseType, type }: CategoryRo
           )}
         </div>
       )}
+
+      <EditCategoryDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        category={categoryForEdit}
+      />
     </div>
   )
 }
@@ -350,6 +495,7 @@ function CategorySection({ type, title, description }: CategorySectionProps) {
                 catColor={cat.color}
                 expenseType={cat.expenseType}
                 type={type}
+                businessId={activeBusiness?.id ?? ""}
               />
             ))
           )}

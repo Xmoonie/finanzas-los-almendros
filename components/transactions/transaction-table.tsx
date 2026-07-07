@@ -67,6 +67,21 @@ function getAvailableYears(transactions: Transaction[], type: TransactionType): 
   return Array.from(years).sort((a, b) => b.localeCompare(a))
 }
 
+function getAvailableSubcategories(
+  transactions: Transaction[],
+  type: TransactionType,
+  categoryFilter: string
+): string[] {
+  const subs = new Set(
+    transactions
+      .filter(t => t.type === type)
+      .filter(t => categoryFilter === "all" || t.category === categoryFilter)
+      .map(t => t.subcategoryName)
+      .filter((s): s is string => !!s)
+  )
+  return Array.from(subs).sort((a, b) => a.localeCompare(b))
+}
+
 
 export function TransactionTable({ type }: { type: TransactionType }) {
   const { data, deleteTransaction } = useFinance()
@@ -75,6 +90,7 @@ export function TransactionTable({ type }: { type: TransactionType }) {
 
   const [search, setSearch] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
+  const [subcategoryFilter, setSubcategoryFilter] = useState<string>("all")
   const [monthFilter, setMonthFilter] = useState<string>(currentMonth)
   const [yearFilter, setYearFilter] = useState<string>(currentYear)
   const [sortField, setSortField] = useState<SortField>("date")
@@ -84,29 +100,40 @@ export function TransactionTable({ type }: { type: TransactionType }) {
 
   const categories = data.categories.filter(c => c.type === type)
   const availableMonths = useMemo(() => getAvailableMonths(data.transactions, type), [data.transactions, type])
-const availableYears = useMemo(() => getAvailableYears(data.transactions, type), [data.transactions, type])
+  const availableYears = useMemo(() => getAvailableYears(data.transactions, type), [data.transactions, type])
+  const availableSubcategories = useMemo(
+    () => getAvailableSubcategories(data.transactions, type, categoryFilter),
+    [data.transactions, type, categoryFilter]
+  )
+
   const transactions = useMemo(() => {
     let filtered = data.transactions.filter(t => t.type === type)
 
+    if (yearFilter !== "all") {
+      filtered = filtered.filter(t => t.date.startsWith(yearFilter))
+    }
+
     if (monthFilter !== "all") {
-      filtered = filtered.filter(t => t.date.startsWith(monthFilter))
-      if (yearFilter !== "all") {
-  filtered = filtered.filter(t => t.date.startsWith(yearFilter))
-}
+      filtered = filtered.filter(t => t.date.substring(0, 7) === monthFilter)
     }
 
     if (search) {
       const q = search.toLowerCase()
       filtered = filtered.filter(
         t =>
-          t.description.toLowerCase().includes(q) ||
-          t.payee.toLowerCase().includes(q) ||
-          t.category.toLowerCase().includes(q)
+          (t.notes ?? "").toLowerCase().includes(q) ||
+          (t.payee ?? "").toLowerCase().includes(q) ||
+          t.category.toLowerCase().includes(q) ||
+          (t.subcategoryName ?? "").toLowerCase().includes(q)
       )
     }
 
     if (categoryFilter !== "all") {
       filtered = filtered.filter(t => t.category === categoryFilter)
+    }
+
+    if (subcategoryFilter !== "all") {
+      filtered = filtered.filter(t => t.subcategoryName === subcategoryFilter)
     }
 
     filtered.sort((a, b) => {
@@ -118,7 +145,7 @@ const availableYears = useMemo(() => getAvailableYears(data.transactions, type),
     })
 
     return filtered
-  }, [data.transactions, type, search, categoryFilter, monthFilter, sortField, sortDir])
+  }, [data.transactions, type, search, categoryFilter, subcategoryFilter, monthFilter, yearFilter, sortField, sortDir])
 
   const total = transactions.reduce((sum, t) => sum + t.amount, 0)
 
@@ -128,6 +155,19 @@ const availableYears = useMemo(() => getAvailableYears(data.transactions, type),
     } else {
       setSortField(field)
       setSortDir("desc")
+    }
+  }
+
+  function handleCategoryChange(value: string) {
+    setCategoryFilter(value)
+    setSubcategoryFilter("all")
+  }
+
+  function handleMonthChange(value: string) {
+    setMonthFilter(value)
+    if (value !== "all") {
+      const yearOfMonth = value.substring(0, 4)
+      setYearFilter(yearOfMonth)
     }
   }
 
@@ -154,19 +194,19 @@ const availableYears = useMemo(() => getAvailableYears(data.transactions, type),
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {/* Filtro de año */}
-<Select value={yearFilter} onValueChange={setYearFilter}>
-  <SelectTrigger className="w-[100px]">
-    <SelectValue placeholder="Año" />
-  </SelectTrigger>
-  <SelectContent>
-    <SelectItem value="all">Todos</SelectItem>
-    {availableYears.map(y => (
-      <SelectItem key={y} value={y}>{y}</SelectItem>
-    ))}
-  </SelectContent>
-</Select>
+            <Select value={yearFilter} onValueChange={setYearFilter}>
+              <SelectTrigger className="w-[100px]">
+                <SelectValue placeholder="Año" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                {availableYears.map(y => (
+                  <SelectItem key={y} value={y}>{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {/* Filtro de mes */}
-            <Select value={monthFilter} onValueChange={setMonthFilter}>
+            <Select value={monthFilter} onValueChange={handleMonthChange}>
               <SelectTrigger className="w-[160px]">
                 <SelectValue placeholder="Mes" />
               </SelectTrigger>
@@ -181,7 +221,7 @@ const availableYears = useMemo(() => getAvailableYears(data.transactions, type),
             </Select>
 
             {/* Filtro de categoria */}
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <Select value={categoryFilter} onValueChange={handleCategoryChange}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Todas las categorias" />
               </SelectTrigger>
@@ -190,6 +230,21 @@ const availableYears = useMemo(() => getAvailableYears(data.transactions, type),
                 {categories.map((cat) => (
                   <SelectItem key={cat.id} value={cat.name}>
                     {cat.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Filtro de subcategoria */}
+            <Select value={subcategoryFilter} onValueChange={setSubcategoryFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Todas las subcategorias" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas las subcategorias</SelectItem>
+                {availableSubcategories.map((sub) => (
+                  <SelectItem key={sub} value={sub}>
+                    {sub}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -212,14 +267,14 @@ const availableYears = useMemo(() => getAvailableYears(data.transactions, type),
                     <ArrowUpDown className="ml-1 size-3" />
                   </Button>
                 </TableHead>
-                <TableHead>Descripcion</TableHead>
                 <TableHead>
                   <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs" onClick={() => toggleSort("category")}>
                     Categoria
                     <ArrowUpDown className="ml-1 size-3" />
                   </Button>
                 </TableHead>
-              
+                <TableHead>Subcategoria</TableHead>
+                <TableHead>Notas</TableHead>
                 <TableHead className="text-right">
                   <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs" onClick={() => toggleSort("amount")}>
                     Monto
@@ -232,7 +287,7 @@ const availableYears = useMemo(() => getAvailableYears(data.transactions, type),
             <TableBody>
               {transactions.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                     No se encontraron transacciones.
                   </TableCell>
                 </TableRow>
@@ -244,7 +299,6 @@ const availableYears = useMemo(() => getAvailableYears(data.transactions, type),
                       <TableCell className="text-sm tabular-nums text-muted-foreground">
                         {format(parseISO(tx.date), "dd/MM/yyyy", { locale: es })}
                       </TableCell>
-                      <TableCell className="text-sm font-medium">{tx.description}</TableCell>
                       <TableCell>
                         <Badge
                           variant="outline"
@@ -254,7 +308,15 @@ const availableYears = useMemo(() => getAvailableYears(data.transactions, type),
                           {tx.category}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{tx.payee}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {tx.subcategoryName || "—"}
+                      </TableCell>
+                      <TableCell
+                        className="text-sm text-muted-foreground max-w-[200px] truncate"
+                        title={tx.notes || ""}
+                      >
+                        {tx.notes || "—"}
+                      </TableCell>
                       <TableCell className="text-right text-sm font-semibold tabular-nums">
                         {formatCurrency(tx.amount)}
                       </TableCell>

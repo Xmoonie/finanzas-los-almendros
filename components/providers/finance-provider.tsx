@@ -17,6 +17,7 @@ import {
   deleteRecurringExpense as deleteRec,
   toggleRecurringExpense as toggleRec,
   addCategory as addCat,
+  updateCategory as updateCat,
   deleteCategory as deleteCat,
   addSubcategory as addSub,
   deleteSubcategory as deleteSub,
@@ -41,6 +42,7 @@ interface FinanceContextValue {
   deleteRecurringExpense: (id: string) => Promise<void>
   toggleRecurringExpense: (id: string) => Promise<void>
   addCategory: (category: Omit<Category, "id">) => Promise<void>
+  updateCategory: (category: Category) => Promise<void>
   deleteCategory: (id: string) => Promise<void>
   addSubcategory: (subcategory: Omit<Subcategory, "id">) => Promise<void>
   deleteSubcategory: (id: string) => Promise<void>
@@ -165,6 +167,11 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     setData(updated)
   }
 
+  const handleUpdateCategory = async (category: Category) => {
+    const updated = await updateCat(data, category)
+    setData(updated)
+  }
+
   const handleDeleteCategory = async (id: string) => {
     const updated = await deleteCat(data, id)
     setData(updated)
@@ -200,6 +207,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         deleteRecurringExpense: handleDeleteRecurringExpense,
         toggleRecurringExpense: handleToggleRecurringExpense,
         addCategory: handleAddCategory,
+        updateCategory: handleUpdateCategory,
         deleteCategory: handleDeleteCategory,
         addSubcategory: handleAddSubcategory,
         deleteSubcategory: handleDeleteSubcategory,

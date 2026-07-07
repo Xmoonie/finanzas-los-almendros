@@ -319,6 +319,50 @@ export async function addCategory(data: FinanceData, category: Omit<Category, "i
   return { ...data, categories: [...data.categories, { ...category, id: inserted.id }] }
 }
 
+export async function updateCategory(data: FinanceData, category: Category): Promise<FinanceData> {
+  const oldCategory = data.categories.find(c => c.id === category.id)
+  if (!oldCategory) return data
+
+  const nameChanged = oldCategory.name !== category.name
+
+  // 1. Actualizar la categoría
+  await supabase.from("categories").update({
+    name: category.name,
+    color: category.color,
+    expense_type: category.expenseType ?? null,
+  }).eq("id", category.id)
+
+  let updatedData: FinanceData = {
+    ...data,
+    categories: data.categories.map(c => c.id === category.id ? category : c),
+  }
+
+  // 2. Si el nombre cambió, hacer cascade a todas las tablas relacionadas
+  if (nameChanged) {
+    const oldName = oldCategory.name
+    const newName = category.name
+
+    await Promise.all([
+      supabase.from("transactions").update({ category: newName }).eq("business_id", category.businessId).eq("category", oldName),
+      supabase.from("budgets").update({ category: newName }).eq("business_id", category.businessId).eq("category", oldName),
+      supabase.from("recurring_expenses").update({ category: newName }).eq("business_id", category.businessId).eq("category", oldName),
+      supabase.from("subcategories").update({ category_name: newName }).eq("business_id", category.businessId).eq("category_name", oldName),
+      supabase.from("expense_memory").update({ category_name: newName }).eq("business_id", category.businessId).eq("category_name", oldName),
+    ])
+
+    updatedData = {
+      ...updatedData,
+      transactions: updatedData.transactions.map(t => t.category === oldName ? { ...t, category: newName } : t),
+      budgets: updatedData.budgets.map(b => b.category === oldName ? { ...b, category: newName } : b),
+      recurringExpenses: updatedData.recurringExpenses.map(r => r.category === oldName ? { ...r, category: newName } : r),
+      subcategories: updatedData.subcategories.map(s => s.categoryName === oldName ? { ...s, categoryName: newName } : s),
+      expenseMemory: updatedData.expenseMemory.map(m => m.categoryName === oldName ? { ...m, categoryName: newName } : m),
+    }
+  }
+
+  return updatedData
+}
+
 export async function deleteCategory(data: FinanceData, id: string): Promise<FinanceData> {
   await supabase.from("categories").delete().eq("id", id)
   return { ...data, categories: data.categories.filter(c => c.id !== id) }

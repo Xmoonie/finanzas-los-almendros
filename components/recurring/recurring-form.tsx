@@ -34,6 +34,8 @@ import {
 import { useFinance } from "@/components/providers/finance-provider"
 import type { RecurringExpense, RecurringFrequency } from "@/lib/types"
 
+const NONE_SUBCATEGORY = "none"
+
 const formSchema = z.object({
   amount: z.coerce.number().positive("El monto debe ser mayor a 0"),
   category: z.string().min(1, "Selecciona una categoria"),
@@ -68,7 +70,7 @@ export function RecurringForm({ open, onOpenChange, expense }: RecurringFormProp
       ? {
           amount: expense.amount,
           category: expense.category,
-          subcategoryId: expense.subcategoryId ?? "",
+          subcategoryId: expense.subcategoryId ?? NONE_SUBCATEGORY,
           description: expense.description,
           frequency: expense.frequency,
           dayOfMonth: expense.dayOfMonth ?? undefined,
@@ -76,7 +78,7 @@ export function RecurringForm({ open, onOpenChange, expense }: RecurringFormProp
       : {
           amount: 0,
           category: "",
-          subcategoryId: "",
+          subcategoryId: NONE_SUBCATEGORY,
           description: "",
           frequency: "monthly" as RecurringFrequency,
           dayOfMonth: undefined,
@@ -92,13 +94,14 @@ export function RecurringForm({ open, onOpenChange, expense }: RecurringFormProp
 
   // Reset subcategoría cuando cambia categoría
   useEffect(() => {
-    if (!expense) form.setValue("subcategoryId", "")
+    if (!expense) form.setValue("subcategoryId", NONE_SUBCATEGORY)
   }, [selectedCategory, expense, form])
 
   function onSubmit(values: FormValues) {
-    const selectedSub = values.subcategoryId
-      ? data.subcategories.find(s => s.id === values.subcategoryId)
-      : undefined
+    const selectedSub =
+      values.subcategoryId && values.subcategoryId !== NONE_SUBCATEGORY
+        ? data.subcategories.find(s => s.id === values.subcategoryId)
+        : undefined
 
     const recData = {
       businessId: activeBusiness?.id ?? "",
@@ -208,14 +211,14 @@ export function RecurringForm({ open, onOpenChange, expense }: RecurringFormProp
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Subcategoria</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                    <Select onValueChange={field.onChange} value={field.value ?? NONE_SUBCATEGORY}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Selecciona una subcategoria" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="">— Ninguna —</SelectItem>
+                        <SelectItem value={NONE_SUBCATEGORY}>— Ninguna —</SelectItem>
                         {subcategories.map((sub) => (
                           <SelectItem key={sub.id} value={sub.id}>
                             {sub.name}
